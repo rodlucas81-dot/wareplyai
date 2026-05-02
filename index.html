@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#075E54">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="WA Reply AI">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2220%22%20fill%3D%22%23075E54%22%2F%3E%3Ctext%20y%3D%2268%22%20x%3D%2250%22%20text-anchor%3D%22middle%22%20font-size%3D%2236%22%20font-weight%3D%22bold%22%20fill%3D%22white%22%20font-family%3D%22sans-serif%22%3EWA%3C%2Ftext%3E%3Ctext%20y%3D%2288%22%20x%3D%2250%22%20text-anchor%3D%22middle%22%20font-size%3D%2218%22%20fill%3D%22%2325D366%22%20font-family%3D%22sans-serif%22%3EAI%3C%2Ftext%3E%3C%2Fsvg%3E">
+<title>WA Reply AI</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0f0d;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding-bottom: 140px;
+  }
+
+  header {
+    background: #075E54;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  header h1 { font-size: 18px; font-weight: 600; color: #fff; }
+  header .tagline { font-size: 12px; color: #c8e6c9; margin-top: 2px; }
+
+  .section { padding: 16px 20px; display: none; }
+  .section.visible { display: block; }
+
+  .label {
+    font-size: 11px; font-weight: 600; color: #25D366;
+    letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px;
+  }
+
+  textarea, input[type="text"] {
+    width: 100%; background: #1a2420; border: 1px solid #2a3a34;
+    border-radius: 12px; color: #e0e0e0; font-size: 14px;
+    padding: 14px; outline: none; line-height: 1.5;
+    font-family: inherit;
+  }
+
+  textarea { resize: none; }
+  textarea:focus, input[type="text"]:focus { border-color: #25D366; }
+
+  .btn-primary {
+    width: 100%; background: linear-gradient(135deg, #25D366, #128C7E);
+    border: none; border-radius: 12px; color: #fff; font-size: 15px;
+    font-weight: 600; padding: 14px; margin-top: 12px; cursor: pointer;
+    letter-spacing: 0.3px;
+  }
+
+  .btn-primary:active { opacity: 0.85; }
+
+  .chips-row {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;
+  }
+
+  .chip {
+    background: #1a2420; border: 1.5px solid #2a3a34; border-radius: 20px;
+    color: #aaa; font-size: 13px; padding: 7px 14px; cursor: pointer;
+    white-space: nowrap; font-family: inherit;
+  }
+
+  .chip.selected { background: #0d2e1e; color: #25D366; border-color: #25D366; }
+  .chip:active { opacity: 0.8; }
+
+  .chip.source { font-size: 14px; padding: 9px 16px; }
+  .chip.source.selected { background: #075E54; color: #fff; border-color: #25D366; }
+
+  .card {
+    background: #141d19; border: 1px solid #2a3a34; border-radius: 14px;
+    padding: 16px; margin-bottom: 14px;
+  }
+
+  .card-label { font-size: 11px; font-weight: 700; color: #25D366; letter-spacing: 1px; margin-bottom: 8px; }
+  .card-text { font-size: 15px; line-height: 1.6; color: #e8e8e8; }
+
+  .card-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+  .action-btn {
+    background: transparent; border: 1px solid #3a4a44; border-radius: 8px;
+    color: #aaa; font-size: 12px; padding: 6px 14px; cursor: pointer;
+    font-family: inherit;
+  }
+
+  .action-btn.copied, .action-btn.saved { color: #25D366; border-color: #25D366; }
+  .action-btn.share { border-color: #4A9EE8; color: #4A9EE8; }
+
+  .loading { display: none; text-align: center; padding: 40px 20px; }
+  .loading.visible { display: block; }
+
+  .spinner {
+    width: 40px; height: 40px; border: 3px solid #2a3a34;
+    border-top-color: #25D366; border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading p { color: #888; font-size: 14px; }
+
+  .error-box {
+    background: #2a1a1a; border: 1px solid #aa4444; border-radius: 12px;
+    color: #ff8888; font-size: 14px; padding: 14px; margin: 16px 20px; display: none;
+  }
+
+  .error-box.visible { display: block; }
+
+  .refinement-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #0f1a16; border-top: 1px solid #2a3a34;
+    padding: 10px 16px 20px; display: none;
+  }
+
+  .refinement-bar.visible { display: block; }
+
+  .refine-chips {
+    display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none;
+  }
+
+  .refine-chips::-webkit-scrollbar { display: none; }
+
+  .refine-row { display: flex; gap: 8px; align-items: center; }
+
+  .refine-row input {
+    flex: 1; background: #1a2420; border: 1px solid #2a3a34; border-radius: 10px;
+    color: #e0e0e0; font-size: 14px; padding: 10px 14px; outline: none; font-family: inherit;
+  }
+
+  .refine-row input:focus { border-color: #25D366; }
+
+  .refine-send {
+    background: #25D366; border: none; border-radius: 10px; color: #fff;
+    font-size: 18px; width: 44px; height: 44px; cursor: pointer; flex-shrink: 0;
+  }
+
+  .upload-label {
+    display: block; background: #1a2420; border: 1.5px dashed #2a3a34;
+    border-radius: 12px; color: #888; font-size: 14px; text-align: center;
+    padding: 16px; cursor: pointer; margin-bottom: 12px;
+  }
+
+  .upload-label:active { border-color: #25D366; color: #25D366; }
+  input[type="file"] { display: none; }
+
+  .divider {
+    text-align: center; color: #444; font-size: 12px; margin: 10px 0; position: relative;
+  }
+
+  .divider::before, .divider::after {
+    content: ''; position: absolute; top: 50%; width: 40%; height: 1px; background: #2a3a34;
+  }
+
+  .divider::before { left: 0; }
+  .divider::after { right: 0; }
+
+  .hint { font-size: 12px; color: #555; margin-top: 8px; }
+
+  .section-gap { margin-top: 16px; }
+
+  .install-banner {
+    background: #0d2518; border: 1px solid #1a4a2a; border-radius: 12px;
+    padding: 12px 16px; margin: 12px 20px; display: flex; align-items: center; gap: 12px;
+  }
+
+  .install-banner p { font-size: 13px; color: #c8e6c9; flex: 1; line-height: 1.5; }
+  .install-banner button {
+    background: #25D366; border: none; border-radius: 8px; color: #fff;
+    font-size: 12px; font-weight: 600; padding: 8px 14px; cursor: pointer; white-space: nowrap;
+  }
+
+  #installBanner { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>WA Reply AI</h1>
+    <div class="tagline">Smart replies for any chat app</div>
+  </div>
+</header>
+
+<!-- iOS install hint -->
+<div class="install-banner" id="iosBanner" style="display:none">
+  <span style="font-size:22px">📱</span>
+  <p>Open in Safari and tap <strong>Share → Add to Home Screen</strong> to install as an app on your iPhone.</p>
+  <button onclick="document.getElementById('iosBanner').style.display='none'">✕</button>
+</div>
+
+<!-- Android install prompt -->
+<div class="install-banner" id="installBanner">
+  <span style="font-size:22px">⬇️</span>
+  <p>Install WA Reply AI on your home screen for quick access.</p>
+  <button id="installBtn">Install</button>
+</div>
+
+<div id="errorBox" class="error-box"></div>
+
+<!-- Step 1: App source + chat input -->
+<div id="stepChat" class="section visible">
+  <div class="label">Which app is this from?</div>
+  <div class="chips-row">
+    <button class="chip source selected" onclick="setSource('whatsapp', this)">💬 WhatsApp</button>
+    <button class="chip source" onclick="setSource('telegram', this)">✈️ Telegram</button>
+    <button class="chip source" onclick="setSource('imessage', this)">🍎 iMessage</button>
+    <button class="chip source" onclick="setSource('other', this)">💕 Other</button>
+  </div>
+
+  <div id="uploadSection">
+    <label class="upload-label" for="fileInput" id="uploadLabel">
+      📎 Tap to upload exported chat (.txt or .zip)
+    </label>
+    <input type="file" id="fileInput" accept=".txt,.zip,.json">
+  </div>
+
+  <div class="divider" id="orDivider">or paste below</div>
+
+  <textarea id="chatInput" rows="8" placeholder="Paste your WhatsApp chat export here..."></textarea>
+  <button class="btn-primary" onclick="loadChat()">Continue →</button>
+</div>
+
+<!-- Step 2: Who are you? -->
+<div id="stepName" class="section">
+  <div class="label">Who are you in this chat?</div>
+  <div id="senderChips" class="chips-row"></div>
+  <div id="manualNameSection" style="display:none">
+    <div class="label section-gap">Or type your name:</div>
+    <input type="text" id="manualNameInput" placeholder="Your name or username in the chat...">
+    <button class="btn-primary" onclick="setManualName()">Continue →</button>
+  </div>
+  <p class="hint" id="nameHint">Tap your name above to continue</p>
+</div>
+
+<!-- Step 3: Context + Generate -->
+<div id="stepContext" class="section">
+  <div class="label">Who is this person?</div>
+  <div class="chips-row" id="relationshipChips"></div>
+
+  <div class="label section-gap">Tone</div>
+  <div class="chips-row" id="toneChips"></div>
+
+  <div class="label section-gap">Reply length</div>
+  <div class="chips-row" id="lengthChips"></div>
+
+  <div class="label section-gap">Add context (optional)</div>
+  <input type="text" id="contextInput" placeholder="e.g. We had a fight, I'm running late, she seems upset...">
+  <button class="btn-primary" id="generateBtn" onclick="fetchSuggestions()">✨ Get Reply Suggestions</button>
+</div>
+
+<!-- Loading -->
+<div id="loadingDiv" class="loading">
+  <div class="spinner"></div>
+  <p id="loadingText">Analyzing conversation...</p>
+</div>
+
+<!-- Personal question -->
+<div id="stepPersonal" class="section">
+  <div class="label">One quick question</div>
+  <div class="card">
+    <p id="personalQuestionText" class="card-text"></p>
+  </div>
+  <input type="text" id="personalAnswerInput" placeholder="Your answer...">
+  <button class="btn-primary" onclick="submitPersonalAnswer()">Continue →</button>
+</div>
+
+<!-- Results -->
+<div id="stepResults" class="section">
+  <div class="label">Reply suggestions</div>
+  <div id="resultsContainer"></div>
+</div>
+
+<!-- Refinement bar -->
+<div id="refinementBar" class="refinement-bar">
+  <div class="label" style="margin-bottom:6px">REFINE REPLIES</div>
+  <div class="refine-chips" id="refineChips"></div>
+  <div class="refine-row">
+    <input type="text" id="refinementInput" placeholder="make it shorter, add a joke, less formal...">
+    <button class="refine-send" onclick="submitRefinement()">→</button>
+  </div>
+</div>
+
+<script>
+const API_KEY = "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";
+const MODEL = "claude-sonnet-4-5";
+
+const QUICK_CHIPS = ["Make it shorter","Make it longer","Less formal","More formal","Add a joke","Be more direct","Softer tone","More enthusiastic"];
+
+let chatText = "";
+let yourName = "";
+let senders = [];
+let conversationHistory = [];
+let chatSource = "whatsapp";
+let selectedRelationship = "";
+let selectedTone = "Natural";
+let selectedLength = "Medium";
+
+// ── PWA setup ─────────────────────────────────────────────────
+(function setupPWA() {
+  // Web app manifest (inline)
+  const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#075E54"/><text y="68" x="50" text-anchor="middle" font-size="36" font-weight="bold" fill="white" font-family="sans-serif">WA</text><text y="88" x="50" text-anchor="middle" font-size="18" fill="#25D366" font-family="sans-serif">AI</text></svg>`;
+  const iconUrl = 'data:image/svg+xml,' + encodeURIComponent(iconSvg);
+  const manifest = {
+    name: 'WA Reply AI',
+    short_name: 'WA Reply AI',
+    description: 'Smart AI-powered replies for WhatsApp, Telegram, and more',
+    start_url: '.',
+    display: 'standalone',
+    background_color: '#0a0f0d',
+    theme_color: '#075E54',
+    icons: [{ src: iconUrl, sizes: 'any', type: 'image/svg+xml' }]
+  };
+  const mBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+  const mLink = document.createElement('link');
+  mLink.rel = 'manifest';
+  mLink.href = URL.createObjectURL(mBlob);
+  document.head.appendChild(mLink);
+
+  // Service worker (works when served over HTTPS)
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    const swCode = `
+      const CACHE = 'wareplyai-v1';
+      self.addEventListener('install', e => { self.skipWaiting(); });
+      self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+      self.addEventListener('fetch', e => {
+        if (e.request.method !== 'GET') return;
+        e.respondWith(caches.open(CACHE).then(c =>
+          c.match(e.request).then(r => r || fetch(e.request).then(res => { c.put(e.request, res.clone()); return res; }))
+        ));
+      });
+    `;
+    const swBlob = new Blob([swCode], { type: 'application/javascript' });
+    navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+  }
+
+  // iOS install banner
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isInStandalone = ('standalone' in navigator && navigator.standalone);
+  if (isIOS && !isInStandalone) {
+    document.getElementById('iosBanner').style.display = 'flex';
+  }
+
+  // Android/Chrome install prompt
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    document.getElementById('installBanner').style.display = 'flex';
+    document.getElementById('installBtn').onclick = () => {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(() => {
+        document.getElementById('installBanner').style.display = 'none';
+        deferredPrompt = null;
+      });
+    };
+  });
+})();
+
+// ── Option chips builder ──────────────────────────────────────
+function buildChips(containerId, options, defaultVal, onSelect) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  options.forEach(opt => {
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (opt === defaultVal ? ' selected' : '');
+    chip.textContent = opt;
+    chip.onclick = () => {
+      container.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+      onSelect(opt);
+    };
+    container.appendChild(chip);
+  });
+}
+
+buildChips('relationshipChips', ['Friend','Partner','Family','Boss','Colleague','Client','Stranger'], '', v => { selectedRelationship = v; });
+buildChips('toneChips', ['Natural','Chill','Professional','Flirty','Direct'], 'Natural', v => { selectedTone = v; });
+buildChips('lengthChips', ['Short','Medium','Long'], 'Medium', v => { selectedLength = v; });
+
+// ── Source selector ───────────────────────────────────────────
+function setSource(source, btn) {
+  chatSource = source;
+  document.querySelectorAll('.chip.source').forEach(c => c.classList.remove('selected'));
+  btn.classList.add('selected');
+
+  const uploadLabel = document.getElementById('uploadLabel');
+  const chatInput = document.getElementById('chatInput');
+  const uploadSection = document.getElementById('uploadSection');
+
+  if (source === 'whatsapp') {
+    uploadLabel.innerHTML = '📎 Tap to upload exported chat (.txt or .zip)';
+    document.getElementById('fileInput').accept = '.txt,.zip';
+    chatInput.placeholder = 'Paste your WhatsApp chat export here...';
+    uploadSection.style.display = '';
+  } else if (source === 'telegram') {
+    uploadLabel.innerHTML = '📎 Tap to upload Telegram export (.json or .txt)';
+    document.getElementById('fileInput').accept = '.json,.txt,.zip';
+    chatInput.placeholder = 'Paste your Telegram chat export here, or upload the exported JSON file...';
+    uploadSection.style.display = '';
+  } else if (source === 'imessage') {
+    uploadSection.style.display = 'none';
+    chatInput.placeholder = 'Copy and paste your iMessage conversation here (select messages → copy)...';
+  } else {
+    uploadSection.style.display = 'none';
+    chatInput.placeholder = 'Paste your chat conversation here — Tinder, Hinge, Instagram DMs, Discord, or any app...';
+  }
+}
+
+// ── File upload ───────────────────────────────────────────────
+document.getElementById("fileInput").addEventListener("change", async function() {
+  const file = this.files[0];
+  if (!file) return;
+  try {
+    let text = "";
+    if (file.name.endsWith(".zip")) {
+      showError("ZIP upload works on Android. On iPhone/desktop, extract the .txt file and paste it.");
+      return;
+    }
+    text = await file.text();
+    // Auto-detect Telegram JSON
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') && trimmed.includes('"messages"')) {
+      chatSource = 'telegram';
+      document.querySelectorAll('.chip.source').forEach(c => c.classList.remove('selected'));
+      document.querySelectorAll('.chip.source').forEach(c => { if (c.textContent.includes('Telegram')) c.classList.add('selected'); });
+    }
+    chatText = processChatText(text);
+    document.getElementById("chatInput").value = chatText;
+  } catch(e) {
+    showError("Could not read file: " + e.message);
+  }
+});
+
+// ── Process raw text (detect + convert formats) ───────────────
+function processChatText(raw) {
+  const trimmed = raw.trim();
+  // Telegram JSON
+  if (trimmed.startsWith('{') && trimmed.includes('"messages"')) {
+    const converted = parseTelegramJSON(trimmed);
+    if (converted) return converted;
+  }
+  // Return as-is (WhatsApp, Telegram text, iMessage copy-paste, other)
+  return raw;
+}
+
+// ── Telegram JSON parser ──────────────────────────────────────
+function parseTelegramJSON(text) {
+  try {
+    const data = JSON.parse(text);
+    if (!data.messages || !Array.isArray(data.messages)) return null;
+    const lines = [];
+    for (const msg of data.messages) {
+      if (msg.type !== 'message') continue;
+      const from = msg.from || 'Unknown';
+      let msgText = '';
+      if (typeof msg.text === 'string') {
+        msgText = msg.text;
+      } else if (Array.isArray(msg.text)) {
+        msgText = msg.text.map(s => typeof s === 'string' ? s : (s.text || '')).join('');
+      }
+      if (!msgText.trim()) continue;
+      if (isSystemMessage(msgText)) continue;
+      // Format: DD/MM/YYYY, HH:MM - Name: text
+      const d = new Date(msg.date);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mn = String(d.getMinutes()).padStart(2, '0');
+      lines.push(`${dd}/${mm}/${yyyy}, ${hh}:${mn} - ${from}: ${msgText}`);
+    }
+    return lines.join('\n');
+  } catch(e) {
+    return null;
+  }
+}
+
+// ── System message filter ─────────────────────────────────────
+function isSystemMessage(text) {
+  if (!text || text.trim().length < 3) return true;
+  const lower = text.toLowerCase();
+  if (lower.includes('end-to-end encrypted')) return true;
+  if (lower.includes('tap to learn more')) return true;
+  if (lower.includes('your business is now using a secure service')) return true;
+  if (lower.includes('<media omitted>') || lower.includes('image omitted') || lower.includes('audio omitted') || lower.includes('video omitted') || lower.includes('sticker omitted')) return true;
+  if (lower.startsWith('voice message')) return true;
+  if (lower.includes('transcribed with') || lower.includes('transcription by') || lower.includes('transcrição com ia')) return true;
+  if (lower.includes('joined using this group') || lower.includes('left the group') || lower.includes('changed the subject')) return true;
+  return false;
+}
+
+// ── Step 1 → 2 ────────────────────────────────────────────────
+function loadChat() {
+  let raw = document.getElementById("chatInput").value.trim();
+  if (!raw) { showError("Please paste a chat or upload a file first."); return; }
+  clearError();
+
+  chatText = processChatText(raw);
+
+  senders = parseSenders(chatText);
+  const container = document.getElementById("senderChips");
+  container.innerHTML = "";
+
+  if (senders.length === 0) {
+    // No senders detected — show manual name input (works for iMessage/other)
+    document.getElementById('manualNameSection').style.display = 'block';
+    document.getElementById('nameHint').style.display = 'none';
+    show("stepName");
+    hide("stepChat");
+    return;
+  }
+
+  senders.forEach(name => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = name;
+    chip.onclick = () => {
+      yourName = name;
+      container.querySelectorAll(".chip").forEach(c => c.classList.remove("selected"));
+      chip.classList.add("selected");
+      show("stepContext");
+    };
+    container.appendChild(chip);
+  });
+
+  // Also show manual name option for edge cases
+  document.getElementById('manualNameSection').style.display = 'block';
+  document.getElementById('nameHint').style.display = 'block';
+
+  show("stepName");
+  hide("stepChat");
+  scrollTop();
+}
+
+function setManualName() {
+  const name = document.getElementById('manualNameInput').value.trim();
+  if (!name) { showError("Please enter your name."); return; }
+  yourName = name;
+  clearError();
+  show("stepContext");
+  scrollTop();
+}
+
+// ── Sender parsing (WhatsApp + Telegram text format) ──────────
+function parseSenders(text) {
+  const patterns = [
+    /^\[\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\]\s+(.+?):/gm,
+    /^\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s+-\s+(.+?):/gm,
+    /^\[\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\]\s+(.+?):/gm,
+    /^\[\d{1,2}\.\d{1,2}\.\d{4}\s+\d{2}:\d{2}\]\s+(.+?):/gm,
+  ];
+  const found = new Set();
+  for (const pat of patterns) {
+    let m;
+    pat.lastIndex = 0;
+    while ((m = pat.exec(text)) !== null) {
+      const name = m[1].trim();
+      if (name && name !== "You" && name.length < 40) found.add(name);
+    }
+    if (found.size > 0) break;
+  }
+  return [...found];
+}
+
+// ── Unanswered messages ───────────────────────────────────────
+function findUnanswered() {
+  const patterns = [
+    /^(\[\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\])\s+(.+?):\s(.+)$/gm,
+    /^(\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s+-\s+)(.+?):\s(.+)$/gm,
+    /^(\[\d{1,2}\.\d{1,2}\.\d{4}\s+\d{2}:\d{2}\])\s+(.+?):\s(.+)$/gm,
+  ];
+
+  let usedPattern = null;
+  for (const pat of patterns) {
+    pat.lastIndex = 0;
+    if (pat.test(chatText)) { usedPattern = pat; break; }
+  }
+
+  // For unstructured chats (iMessage, other), return empty and let Claude figure it out
+  if (!usedPattern) return [];
+
+  usedPattern.lastIndex = 0;
+  const messages = [];
+  let m;
+  while ((m = usedPattern.exec(chatText)) !== null) {
+    const text = m[3].trim();
+    if (isSystemMessage(text)) continue;
+    messages.push({ sender: m[2].trim(), text });
+  }
+
+  let lastMyIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].sender === yourName) { lastMyIdx = i; break; }
+  }
+
+  let unanswered = messages.slice(lastMyIdx + 1).filter(m => m.sender !== yourName && m.text);
+  if (unanswered.length > 5) unanswered = unanswered.slice(unanswered.length - 5);
+  return unanswered;
+}
+
+// ── Extract my writing samples ────────────────────────────────
+function extractMyMessages() {
+  const patterns = [
+    /^\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s+-\s+(.+?):\s(.+)$/gm,
+    /^\[\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\]\s+(.+?):\s(.+)$/gm,
+  ];
+  const myMsgs = [];
+  for (const pat of patterns) {
+    pat.lastIndex = 0;
+    let m;
+    while ((m = pat.exec(chatText)) !== null) {
+      if (m[1].trim() === yourName && !isSystemMessage(m[2].trim())) {
+        myMsgs.push(m[2].trim());
+      }
+    }
+    if (myMsgs.length > 0) break;
+  }
+  return myMsgs.slice(-20);
+}
+
+// ── Fetch suggestions ─────────────────────────────────────────
+async function fetchSuggestions() {
+  conversationHistory = [];
+  clearError();
+  showLoading(true, 'Analyzing conversation...');
+  hide("stepResults");
+  hide("refinementBar");
+  hide("stepPersonal");
+
+  const unanswered = findUnanswered();
+  const extraContext = document.getElementById("contextInput").value.trim();
+
+  const lines = chatText.split("\n");
+  const chatCtx = lines.slice(Math.max(0, lines.length - 100))
+    .filter(l => !isSystemMessage(l))
+    .join("\n");
+
+  try {
+    const result = await callClaude(chatCtx, unanswered, extraContext, null);
+    showLoading(false);
+    handleResult(result, unanswered);
+  } catch(e) {
+    showLoading(false);
+    showError(friendlyError(e.message));
+  }
+}
+
+function handleResult(jsonStr, unanswered) {
+  try {
+    const data = JSON.parse(jsonStr);
+    if (data.needsPersonalInfo) {
+      const q = data.personalQuestion || "Can you share more details?";
+      const ctx = data.personalMessageContext || "";
+      document.getElementById("personalQuestionText").textContent = (ctx ? `Re: "${ctx}"\n\n` : "") + q;
+      document.getElementById("personalAnswerInput").value = "";
+      show("stepPersonal");
+      scrollTop();
+    } else {
+      displayResults(data);
+    }
+  } catch(e) {
+    showError("Could not parse response. Please try again.");
+  }
+}
+
+// ── Personal answer ───────────────────────────────────────────
+async function submitPersonalAnswer() {
+  const answer = document.getElementById("personalAnswerInput").value.trim();
+  if (!answer) { showError("Please enter an answer."); return; }
+  clearError();
+  hide("stepPersonal");
+  showLoading(true, 'Generating replies...');
+
+  const unanswered = findUnanswered();
+  const extraContext = document.getElementById("contextInput").value.trim();
+  const lines = chatText.split("\n");
+  const chatCtx = lines.slice(Math.max(0, lines.length - 100)).filter(l => !isSystemMessage(l)).join("\n");
+
+  try {
+    const result = await callClaude(chatCtx, unanswered, extraContext, "My answer: " + answer);
+    showLoading(false);
+    displayResults(JSON.parse(result));
+  } catch(e) {
+    showLoading(false);
+    showError(friendlyError(e.message));
+  }
+}
+
+// ── Display results ───────────────────────────────────────────
+const styleColors = { friendly: '#25D366', thoughtful: '#4A9EE8', snappy: '#FF9500', humor: '#C77DFF' };
+
+function displayResults(data) {
+  const container = document.getElementById("resultsContainer");
+  container.innerHTML = "";
+
+  if (data.summary) {
+    container.innerHTML += `
+      <div class="card">
+        <div class="card-label">CONVERSATION SUMMARY</div>
+        <div class="card-text">${esc(data.summary)}</div>
+      </div>`;
+  }
+
+  (data.replies || []).forEach(reply => {
+    const copyId = "copy_" + Math.random().toString(36).slice(2);
+    const color = styleColors[reply.style?.toLowerCase()] || '#25D366';
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.borderColor = color;
+    card.style.borderWidth = '1.5px';
+    card.innerHTML = `
+      <div class="card-label" style="color:${color}">${esc(reply.emoji || '')} ${esc(reply.style || '').toUpperCase()}</div>
+      <div class="card-text">${esc(reply.text || '')}</div>
+      <div class="card-actions">
+        <button class="action-btn" id="${copyId}" onclick="copyText('${copyId}', \`${escJs(reply.text || '')}\`)">Copy</button>
+        <button class="action-btn share" onclick="shareViaApp(\`${escJs(reply.text || '')}\`)">↗ Send</button>
+      </div>`;
+    container.appendChild(card);
+  });
+
+  show("stepResults");
+  buildRefineChips();
+  show("refinementBar");
+
+  try { conversationHistory.push({ role: "assistant", content: JSON.stringify(data) }); } catch(e) {}
+
+  document.getElementById("stepResults").scrollIntoView({ behavior: "smooth" });
+}
+
+function copyText(btnId, text) {
+  navigator.clipboard.writeText(text).catch(() => {
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+  });
+  const btn = document.getElementById(btnId);
+  btn.textContent = "Copied!"; btn.classList.add("copied");
+  setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 2000);
+}
+
+function shareViaApp(text) {
+  if (navigator.share) {
+    navigator.share({ text }).catch(() => copyText('', text));
+  } else {
+    navigator.clipboard.writeText(text).catch(() => {});
+    alert("Copied! Paste it into your chat app.");
+  }
+}
+
+// ── Refinement ────────────────────────────────────────────────
+function buildRefineChips() {
+  const row = document.getElementById("refineChips");
+  row.innerHTML = "";
+  QUICK_CHIPS.forEach(label => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = label;
+    chip.onclick = () => {
+      document.getElementById("refinementInput").value = label;
+      submitRefinement();
+    };
+    row.appendChild(chip);
+  });
+}
+
+async function submitRefinement() {
+  const request = document.getElementById("refinementInput").value.trim();
+  if (!request) return;
+  clearError();
+  showLoading(true, 'Refining replies...');
+  hide("stepResults");
+  hide("refinementBar");
+  document.getElementById("refinementInput").value = "";
+
+  conversationHistory.push({
+    role: "user",
+    content: "Please revise the reply suggestions: " + request + "\n\nKeep the same JSON format. Respond ONLY with valid JSON."
+  });
+
+  try {
+    const result = await callClaudeWithHistory([...conversationHistory]);
+    showLoading(false);
+    displayResults(JSON.parse(result.replace(/```json|```/g, '').trim()));
+  } catch(e) {
+    showLoading(false);
+    showError(friendlyError(e.message));
+  }
+}
+
+// ── Claude API ────────────────────────────────────────────────
+async function callClaude(chatCtx, unanswered, extraContext, personalAnswers) {
+  const sourceLabel = { whatsapp: 'WhatsApp', telegram: 'Telegram', imessage: 'iMessage', other: 'a chat app' }[chatSource] || 'a chat';
+  let prompt = `Here is a ${sourceLabel} conversation:\n\n${chatCtx}\n\n`;
+
+  if (yourName) prompt += `I am "${yourName}" and need to reply.\n`;
+  else prompt += `I need to reply to the other person.\n`;
+
+  if (selectedRelationship) prompt += `This person is my ${selectedRelationship}.\n`;
+  if (selectedTone !== 'Natural') prompt += `Desired tone: ${selectedTone}.\n`;
+  if (selectedLength === 'Short') prompt += `Reply length: very short — 1-2 sentences max.\n`;
+  else if (selectedLength === 'Long') prompt += `Reply length: detailed — 3-5 sentences, elaborate.\n`;
+  else prompt += `Reply length: moderate — 2-3 sentences.\n`;
+  if (extraContext) prompt += `Additional context: ${extraContext}\n`;
+  if (personalAnswers) prompt += `\nPersonal info I provided:\n${personalAnswers}\n`;
+
+  if (unanswered.length === 0) {
+    prompt += "\nAnalyze the last message(s) and reply to them.\n";
+  } else {
+    prompt += `\nThere are ${unanswered.length} unanswered message(s) I need to reply to:\n`;
+    unanswered.forEach((m, i) => { prompt += `${i+1}. ${m.sender}: ${m.text}\n`; });
+  }
+
+  prompt += "\nFirst, check if any message requires personal info only I would know (e.g. what I ate, where I want to go, my personal plans, opinions only I know).\n\n";
+
+  if (!personalAnswers) {
+    prompt += "If ANY message needs personal info: set needsPersonalInfo=true and ask one SHORT question. Leave replies empty.\n";
+    prompt += "If NO messages need personal info: set needsPersonalInfo=false and generate ONE consolidated reply covering ALL messages together.\n\n";
+  } else {
+    prompt += "Using the personal info I provided, generate ONE consolidated reply covering ALL messages.\n\n";
+  }
+
+  const myMsgs = extractMyMessages();
+  if (myMsgs.length > 0) {
+    prompt += "\nHere are samples of how I actually write (my recent messages in this chat):\n";
+    myMsgs.forEach(m => { prompt += `- ${m}\n`; });
+    prompt += "\nIMPORTANT: Mirror my writing style exactly — match my vocabulary, sentence length, emoji usage, punctuation, slang, and formality level in ALL reply suggestions.\n";
+  }
+
+  if (selectedRelationship) {
+    prompt += `My relationship with the other person: ${selectedRelationship}. Adjust tone, formality, and content accordingly.\n`;
+  }
+
+  prompt += "\nThe reply must read like ONE natural message — not bullet points, not separate paragraphs per topic. Flow naturally the way a real person texts.\n";
+  prompt += "Detect the conversation language and reply in the SAME language.\n\n";
+  prompt += `Respond ONLY with JSON (no markdown, no preamble):
+{
+  "summary": "one sentence about the conversation",
+  "needsPersonalInfo": false,
+  "personalQuestion": "(only if needsPersonalInfo=true)",
+  "personalMessageContext": "(only if needsPersonalInfo=true)",
+  "replies": [
+    {"style": "Friendly", "emoji": "💬", "text": "one natural message covering everything"},
+    {"style": "Thoughtful", "emoji": "✍️", "text": "one natural message covering everything"},
+    {"style": "Snappy", "emoji": "⚡", "text": "one natural message covering everything"},
+    {"style": "Humor", "emoji": "😂", "text": "one natural message — witty, playful, with a joke or light sarcasm"}
+  ]
+}`;
+
+  const userMsg = { role: "user", content: prompt };
+  conversationHistory.push(userMsg);
+  return await sendToAPI([...conversationHistory]);
+}
+
+async function callClaudeWithHistory(history) {
+  return await sendToAPI(history);
+}
+
+async function sendToAPI(messages) {
+  const body = {
+    model: MODEL, max_tokens: 2000,
+    system: "You are a chat reply assistant. Always respond ONLY with valid JSON. No preamble, no markdown fences.",
+    messages
+  };
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": API_KEY,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-access": "true"
+    },
+    body: JSON.stringify(body)
+  });
+
+  const json = await res.json();
+  if (!res.ok) throw new Error("API error " + res.status + ": " + (json.error?.message || JSON.stringify(json)));
+
+  const text = json.content[0].text;
+  try { conversationHistory.push({ role: "assistant", content: text }); } catch(e) {}
+  return text.replace(/```json|```/g, '').trim();
+}
+
+// ── Utilities ─────────────────────────────────────────────────
+function show(id) {
+  const el = document.getElementById(id);
+  el.classList.add("visible");
+  el.style.display = "";
+}
+
+function hide(id) {
+  const el = document.getElementById(id);
+  el.classList.remove("visible");
+  el.style.display = "none";
+}
+
+function showLoading(v, msg) {
+  const el = document.getElementById("loadingDiv");
+  el.style.display = v ? "block" : "none";
+  if (v) {
+    if (msg) document.getElementById("loadingText").textContent = msg;
+    el.scrollIntoView({ behavior: "smooth" });
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById("errorBox");
+  el.textContent = "⚠️ " + msg;
+  el.classList.add("visible");
+  el.style.display = "block";
+  el.scrollIntoView({ behavior: "smooth" });
+}
+
+function clearError() {
+  const el = document.getElementById("errorBox");
+  el.classList.remove("visible");
+  el.style.display = "none";
+}
+
+function scrollTop() { window.scrollTo({ top: 0, behavior: "smooth" }); }
+function esc(str) { return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function escJs(str) { return String(str).replace(/\\/g,"\\\\").replace(/`/g,"\\`").replace(/\$/g,"\\$"); }
+
+function friendlyError(msg) {
+  if (msg.includes('401')) return 'Invalid API key. Please check your configuration.';
+  if (msg.includes('429')) return 'Too many requests — wait a moment and try again.';
+  if (msg.includes('500') || msg.includes('529')) return 'AI service temporarily unavailable. Try again shortly.';
+  if (msg.includes('NetworkError') || msg.includes('Failed to fetch')) return 'No internet connection. Check your network and try again.';
+  return msg;
+}
+
+// Build refine chips on load
+buildRefineChips();
+</script>
+</body>
+</html>
