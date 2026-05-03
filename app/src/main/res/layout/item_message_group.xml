@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginBottom="20dp">
+
+    <!-- Message header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="8dp">
+        <View
+            android:layout_width="3dp"
+            android:layout_height="match_parent"
+            android:minHeight="20dp"
+            android:background="#25D366"
+            android:layout_marginEnd="10dp" />
+        <TextView
+            android:id="@+id/messageHeader"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#8aae9b"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.06" />
+    </LinearLayout>
+
+    <!-- Message bubble -->
+    <TextView
+        android:id="@+id/messageBubble"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/card_bg"
+        android:textColor="#e8e8e8"
+        android:textSize="14sp"
+        android:padding="12dp"
+        android:lineSpacingExtra="3dp"
+        android:layout_marginBottom="10dp" />
+
+    <!-- Reply cards container -->
+    <LinearLayout
+        android:id="@+id/messageRepliesContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+</LinearLayout>

@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0a0f0d"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Header gradient -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#075E54"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="48dp"
+            android:paddingBottom="32dp"
+            android:gravity="center_horizontal">
+
+            <TextView
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:text="💬"
+                android:textSize="38sp"
+                android:gravity="center"
+                android:background="@drawable/circle_green"
+                android:layout_marginBottom="16dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="WA Reply AI"
+                android:textColor="#FFFFFF"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Smart replies powered by Claude AI"
+                android:textColor="#c8e6c9"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- How to use card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="20dp"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="HOW TO USE"
+                    android:textColor="#25D366"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:paddingBottom="16dp" />
+
+                <!-- Step 1 -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingBottom="14dp">
+                    <TextView android:layout_width="28dp" android:layout_height="28dp" android:text="1" android:textColor="#0a0f0d" android:textSize="13sp" android:textStyle="bold" android:gravity="center" android:background="@drawable/circle_green" android:layout_marginEnd="14dp" />
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Open a WhatsApp chat" android:textColor="#e8f5e9" android:textSize="14sp" android:textStyle="bold" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Go to any conversation you want to reply to" android:textColor="#8aae9b" android:textSize="12sp" android:paddingTop="2dp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Step 2 -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingBottom="14dp">
+                    <TextView android:layout_width="28dp" android:layout_height="28dp" android:text="2" android:textColor="#0a0f0d" android:textSize="13sp" android:textStyle="bold" android:gravity="center" android:background="@drawable/circle_green" android:layout_marginEnd="14dp" />
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Export the chat" android:textColor="#e8f5e9" android:textSize="14sp" android:textStyle="bold" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Tap ⋮ → More → Export Chat → Without Media" android:textColor="#8aae9b" android:textSize="12sp" android:paddingTop="2dp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Step 3 -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingBottom="14dp">
+                    <TextView android:layout_width="28dp" android:layout_height="28dp" android:text="3" android:textColor="#0a0f0d" android:textSize="13sp" android:textStyle="bold" android:gravity="center" android:background="@drawable/circle_green" android:layout_marginEnd="14dp" />
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Share to WA Reply AI" android:textColor="#e8f5e9" android:textSize="14sp" android:textStyle="bold" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Select WA Reply AI from the share sheet" android:textColor="#8aae9b" android:textSize="12sp" android:paddingTop="2dp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Step 4 -->
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView android:layout_width="28dp" android:layout_height="28dp" android:text="4" android:textColor="#0a0f0d" android:textSize="13sp" android:textStyle="bold" android:gravity="center" android:background="@drawable/circle_green" android:layout_marginEnd="14dp" />
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Get AI-powered replies ✨" android:textColor="#e8f5e9" android:textSize="14sp" android:textStyle="bold" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pick a style, refine, and send!" android:textColor="#8aae9b" android:textSize="12sp" android:paddingTop="2dp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Features card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="20dp"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="FEATURES"
+                    android:textColor="#25D366"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:paddingBottom="14dp" />
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="💬  Friendly   ✍️  Thoughtful   ⚡  Snappy   😂  Humor" android:textColor="#c8e6c9" android:textSize="13sp" android:paddingBottom="8dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🎭  Choose tone &amp; relationship context" android:textColor="#8aae9b" android:textSize="12sp" android:paddingBottom="6dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="✏️  Mirrors your personal writing style" android:textColor="#8aae9b" android:textSize="12sp" android:paddingBottom="6dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="↗  Send directly to WhatsApp" android:textColor="#8aae9b" android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Paste chat card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_bg"
+                android:padding="20dp"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PASTE CHAT FROM ANY APP"
+                    android:textColor="#25D366"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:paddingBottom="6dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="iMessage, Telegram, Tinder, Instagram DMs — paste anything"
+                    android:textColor="#8aae9b"
+                    android:textSize="12sp"
+                    android:paddingBottom="12dp" />
+
+                <EditText
+                    android:id="@+id/pasteChatInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/card_bg"
+                    android:textColor="#e8e8e8"
+                    android:textColorHint="#555555"
+                    android:textSize="14sp"
+                    android:padding="12dp"
+                    android:hint="Paste your chat conversation here..."
+                    android:inputType="textMultiLine"
+                    android:minLines="4"
+                    android:maxLines="8"
+                    android:gravity="top" />
+
+                <Button
+                    android:id="@+id/analyzePasteBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="10dp"
+                    android:text="✨ Analyze Chat"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/btn_green" />
+            </LinearLayout>
+
+            <!-- Waiting status -->
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="⬆  Or share a WhatsApp chat export from the app"
+                android:textColor="#4a6a5a"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:paddingTop="8dp"
+                android:paddingBottom="24dp" />
+
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

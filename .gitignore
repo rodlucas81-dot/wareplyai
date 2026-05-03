@@ -1,0 +1,40 @@
+# Android build artifacts
+.gradle/
+build/
+app/build/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Local-machine-specific config (SDK paths, etc.)
+local.properties
+
+# Compiled Java class files & APKs / bundles
+*.class
+*.apk
+*.aab
+*.dex
+*.ap_
+
+# IntelliJ / Android Studio caches
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Logs / crash dumps
+*.log
+hs_err_pid*
+
+# Editor swap files
+*.swp
+*~
+
+# Claude Code local config (per-project settings + scratch)
+.claude/
