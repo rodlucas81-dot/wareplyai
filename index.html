@@ -179,16 +179,78 @@
   }
 
   #installBanner { display: none; }
+
+  /* Settings button in header */
+  .settings-btn {
+    margin-left: auto; background: rgba(255,255,255,0.1); border: none;
+    border-radius: 50%; width: 36px; height: 36px; color: #fff;
+    font-size: 18px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .settings-btn:active { background: rgba(255,255,255,0.2); }
+
+  /* Settings modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: none; z-index: 100; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .modal-backdrop.visible { display: flex; }
+  .modal {
+    background: #141d19; border: 1px solid #2a3a34; border-radius: 16px;
+    padding: 24px; max-width: 480px; width: 100%;
+  }
+  .modal h2 {
+    font-size: 18px; color: #fff; margin-bottom: 8px; font-weight: 600;
+  }
+  .modal p {
+    font-size: 13px; color: #aaa; line-height: 1.5; margin-bottom: 16px;
+  }
+  .modal p a { color: #25D366; text-decoration: none; }
+  .modal-actions {
+    display: flex; gap: 8px; margin-top: 16px;
+  }
+  .modal-actions button {
+    flex: 1; border-radius: 10px; padding: 12px; font-size: 14px;
+    font-weight: 600; cursor: pointer; border: none; font-family: inherit;
+  }
+  .modal-actions .save {
+    background: linear-gradient(135deg, #25D366, #128C7E); color: #fff;
+  }
+  .modal-actions .cancel {
+    background: transparent; color: #aaa; border: 1px solid #2a3a34;
+  }
+  .modal-status {
+    font-size: 12px; margin-top: 10px; min-height: 16px;
+  }
+  .modal-status.ok { color: #25D366; }
+  .modal-status.err { color: #ff8888; }
 </style>
 </head>
 <body>
 
 <header>
-  <div>
+  <div style="flex:1">
     <h1>WA Reply AI</h1>
     <div class="tagline">Smart replies for any chat app</div>
   </div>
+  <button class="settings-btn" onclick="openSettings()" title="Settings" aria-label="Settings">⚙️</button>
 </header>
+
+<!-- Settings modal -->
+<div id="settingsModal" class="modal-backdrop" onclick="if(event.target===this)closeSettings()">
+  <div class="modal">
+    <h2>API Key Settings</h2>
+    <p>This app uses the Anthropic Claude API to generate replies. Paste your API key below — it's stored only on this device (browser <code>localStorage</code>) and is sent directly to Anthropic.</p>
+    <p>Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
+    <input type="text" id="apiKeyInput" placeholder="sk-ant-api03-..." autocomplete="off" spellcheck="false">
+    <div id="apiKeyStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="cancel" onclick="closeSettings()">Cancel</button>
+      <button class="save" onclick="saveApiKey()">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- iOS install hint -->
 <div class="install-banner" id="iosBanner" style="display:none">
@@ -290,8 +352,51 @@
 </div>
 
 <script>
-const API_KEY = "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";
+const API_KEY_STORAGE = "wa_reply_ai_api_key";
 const MODEL = "claude-sonnet-4-5";
+
+function getApiKey() {
+  try { return localStorage.getItem(API_KEY_STORAGE) || ""; } catch (e) { return ""; }
+}
+function setApiKey(key) {
+  try { localStorage.setItem(API_KEY_STORAGE, key); } catch (e) {}
+}
+function clearApiKey() {
+  try { localStorage.removeItem(API_KEY_STORAGE); } catch (e) {}
+}
+
+// ── Settings modal ────────────────────────────────────────────
+function openSettings() {
+  const input = document.getElementById("apiKeyInput");
+  input.value = getApiKey();
+  document.getElementById("apiKeyStatus").textContent = "";
+  document.getElementById("apiKeyStatus").className = "modal-status";
+  document.getElementById("settingsModal").classList.add("visible");
+  setTimeout(() => input.focus(), 50);
+}
+function closeSettings() {
+  document.getElementById("settingsModal").classList.remove("visible");
+}
+function saveApiKey() {
+  const key = document.getElementById("apiKeyInput").value.trim();
+  const status = document.getElementById("apiKeyStatus");
+  if (!key) {
+    clearApiKey();
+    status.textContent = "API key cleared.";
+    status.className = "modal-status ok";
+    return;
+  }
+  if (!key.startsWith("sk-ant-")) {
+    status.textContent = "That doesn't look like an Anthropic key (should start with sk-ant-).";
+    status.className = "modal-status err";
+    return;
+  }
+  setApiKey(key);
+  status.textContent = "Saved.";
+  status.className = "modal-status ok";
+  clearError();
+  setTimeout(closeSettings, 600);
+}
 
 const QUICK_CHIPS = ["Make it shorter","Make it longer","Less formal","More formal","Add a joke","Be more direct","Softer tone","More enthusiastic"];
 
@@ -865,6 +970,12 @@ async function callClaudeWithHistory(history) {
 }
 
 async function sendToAPI(messages) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    openSettings();
+    throw new Error("401 No API key configured. Open settings to add one.");
+  }
+
   const body = {
     model: MODEL, max_tokens: 2000,
     system: "You are a chat reply assistant. Always respond ONLY with valid JSON. No preamble, no markdown fences.",
@@ -875,7 +986,7 @@ async function sendToAPI(messages) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": API_KEY,
+      "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-access": "true"
     },
@@ -883,7 +994,10 @@ async function sendToAPI(messages) {
   });
 
   const json = await res.json();
-  if (!res.ok) throw new Error("API error " + res.status + ": " + (json.error?.message || JSON.stringify(json)));
+  if (!res.ok) {
+    if (res.status === 401) openSettings();
+    throw new Error("API error " + res.status + ": " + (json.error?.message || JSON.stringify(json)));
+  }
 
   const text = json.content[0].text;
   try { conversationHistory.push({ role: "assistant", content: text }); } catch(e) {}
@@ -940,6 +1054,11 @@ function friendlyError(msg) {
 
 // Build refine chips on load
 buildRefineChips();
+
+// Prompt for API key on first run
+if (!getApiKey()) {
+  openSettings();
+}
 </script>
 </body>
 </html>
