@@ -34,8 +34,7 @@
   header h1 { font-size: 18px; font-weight: 600; color: #fff; }
   header .tagline { font-size: 12px; color: #c8e6c9; margin-top: 2px; }
 
-  .section { padding: 16px 20px; display: none; }
-  .section.visible { display: block; }
+  .section { padding: 16px 20px; }
 
   .label {
     font-size: 11px; font-weight: 600; color: #25D366;
@@ -207,7 +206,7 @@
 <div id="errorBox" class="error-box"></div>
 
 <!-- Step 1: App source + chat input -->
-<div id="stepChat" class="section visible">
+<div id="stepChat" class="section" style="display:block">
   <div class="label">Which app is this from?</div>
   <div class="chips-row">
     <button class="chip source selected" onclick="setSource('whatsapp', this)">💬 WhatsApp</button>
@@ -230,7 +229,7 @@
 </div>
 
 <!-- Step 2: Who are you? -->
-<div id="stepName" class="section">
+<div id="stepName" class="section" style="display:none">
   <div class="label">Who are you in this chat?</div>
   <div id="senderChips" class="chips-row"></div>
   <div id="manualNameSection" style="display:none">
@@ -242,7 +241,7 @@
 </div>
 
 <!-- Step 3: Context + Generate -->
-<div id="stepContext" class="section">
+<div id="stepContext" class="section" style="display:none">
   <div class="label">Who is this person?</div>
   <div class="chips-row" id="relationshipChips"></div>
 
@@ -258,13 +257,13 @@
 </div>
 
 <!-- Loading -->
-<div id="loadingDiv" class="loading">
+<div id="loadingDiv" class="loading" style="display:none">
   <div class="spinner"></div>
   <p id="loadingText">Analyzing conversation...</p>
 </div>
 
 <!-- Personal question -->
-<div id="stepPersonal" class="section">
+<div id="stepPersonal" class="section" style="display:none">
   <div class="label">One quick question</div>
   <div class="card">
     <p id="personalQuestionText" class="card-text"></p>
@@ -274,7 +273,7 @@
 </div>
 
 <!-- Results -->
-<div id="stepResults" class="section">
+<div id="stepResults" class="section" style="display:none">
   <div class="label">Reply suggestions</div>
   <div id="resultsContainer"></div>
 </div>
@@ -891,17 +890,8 @@ async function sendToAPI(messages) {
 }
 
 // ── Utilities ─────────────────────────────────────────────────
-function show(id) {
-  const el = document.getElementById(id);
-  el.classList.add("visible");
-  el.style.display = "";
-}
-
-function hide(id) {
-  const el = document.getElementById(id);
-  el.classList.remove("visible");
-  el.style.display = "none";
-}
+function show(id) { document.getElementById(id).style.display = 'block'; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
 
 function showLoading(v, msg) {
   const el = document.getElementById("loadingDiv");
