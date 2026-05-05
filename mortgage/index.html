@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mortgage Fit Estimator</title>
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f172a'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-size='52' font-weight='700' fill='white' font-family='sans-serif'%3EM%3C/text%3E%3C/svg%3E" />
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 + Babel standalone (no build step) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+
+  <style>
+    body { background: #f8fafc; }
+    button { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body>
+  <noscript>
+    <div style="padding: 24px; font-family: system-ui;">
+      This estimator needs JavaScript enabled.
+    </div>
+  </noscript>
+
+  <div id="root"></div>
+
+  <!--
+    Netlify Forms detection. This hidden static form is never submitted by
+    a user — its only job is to let Netlify's build bot register the form
+    schema. The actual submission is sent by JavaScript via fetch() to '/'
+    with the matching form-name. Configure email notifications at:
+      Netlify dashboard → Site → Forms → Form notifications.
+  -->
+  <form name="mortgage-lead" netlify="true" netlify-honeypot="bot-field" hidden>
+    <input type="text" name="name" />
+    <input type="text" name="phone" />
+    <input type="email" name="email" />
+    <input type="text" name="preferredContact" />
+    <input type="text" name="bestTime" />
+    <textarea name="message"></textarea>
+    <textarea name="leadSummary"></textarea>
+    <input type="text" name="bot-field" />
+  </form>
+
+
+<!-- ===========================================================================
+     SECTION 1 — CONFIG
+     Editable configuration. Update rates, MI/PMI factors, FL defaults, DTI
+     caps, minimum down payments, pricing labels, and disclaimers here.
+     =========================================================================== -->
+<script>
+window.CONFIG = {
+  loanTermYears: 30,
+
+  dtiCaps: {
+    fha: 0.56,
+    conventional: 0.50,
+    itin: 0.50,
+    foreignNational: 0.50,
+    bankStatement: 0.50,
+    pl: 0.50,
+    dscr: null, // DSCR doesn't use borrower DTI
+  },
+
+  // Florida defaults used when borrower doesn't know the figure.
+  defaults: {
+    annualPropertyTaxPct: 0.0150,
+    annualHomeownersInsPct: 0.0080,
+    monthlyHO6: 150,
+    monthlyHOA: 0,
+  },
+
+  fha: {
+    minDownPct: 0.035,
+    upfrontMipPct: 0.0175,
+    monthlyMipFactor: {
+      downBelow5: 0.0055,   // 0.55% annually
+      down5OrMore: 0.0050,  // 0.50% annually
+    },
+    rates: {
+      '620_679': 0.0625,
+      '680_plus': 0.0600,
+      unknown: 0.0625,
+    },
+  },
+
+  conventional: {
+    minDownPct: { primary: 0.03, secondHome: 0.10, investment: 0.15 },
+    pmiCutoffPct: 0.20,
+    rates: {
+      '620_639': { below20: 0.07375, '20plus': 0.07125 },
+      '640_659': { below20: 0.07125, '20plus': 0.06875 },
+      '660_679': { below20: 0.06875, '20plus': 0.06625 },
+      '680_719': { below20: 0.06625, '20plus': 0.06375 },
+      '720_739': { below20: 0.06375, '20plus': 0.06125 },
+      '740_759': { below20: 0.06250, '20plus': 0.06000 },
+      '760_plus': { below20: 0.06125, '20plus': 0.05875 },
+      unknown:   { below20: 0.06875, '20plus': 0.06875 },
+    },
+    pmi: {
+      '3to5': {
+        '620_639': 0.0110, '640_659': 0.0095, '660_679': 0.0080,
+        '680_719': 0.0065, '720_739': 0.0050, '740_759': 0.0040, '760_plus': 0.0030,
+      },
+      '5to10': {
+        '620_639': 0.0095, '640_659': 0.0080, '660_679': 0.0065,
+        '680_719': 0.0050, '720_739': 0.0040, '740_759': 0.0030, '760_plus': 0.0025,
+      },
+      '10to15': {
+        '620_639': 0.0075, '640_659': 0.0065, '660_679': 0.0050,
+        '680_719': 0.0040, '720_739': 0.0030, '740_759': 0.0025, '760_plus': 0.0020,
+      },
+      '15to20': {
+        '620_639': 0.0050, '640_659': 0.0040, '660_679': 0.0030,
+        '680_719': 0.0025, '720_739': 0.0020, '740_759': 0.0015, '760_plus': 0.0012,
+      },
+    },
+  },
+
+  // Specialty / Non-QM. Internal-only illustrative rates; the borrower-facing
+  // result cards show pricing categories, not exact rates, unless
+  // display.showRatesToBorrower is enabled below.
+  specialty: {
+    // ITIN: down-payment minimum AND rate depend on credit tier.
+    //   plus_700 = 700+, mid_660 = 660–699, sub_660 = 620–659,
+    //   no_fico  = no FICO. Below 620 is treated as ineligible.
+    // Note: the credit question's "680–719" bucket is conservatively mapped
+    // to mid_660 because it spans both sides of 700.
+    itin: {
+      minDownPctByCredit: {
+        plus_700: 0.15,
+        mid_660:  0.20,
+        sub_660:  0.25,
+        no_fico:  0.25,
+      },
+      rateByCredit: {
+        plus_700: 0.0800,
+        mid_660:  0.0800, // not specified — assumed same as plus_700
+        sub_660:  0.0800, // not specified — assumed same as plus_700
+        no_fico:  0.1050, // "mid 10s"
+      },
+    },
+    foreignNational: { minDownPct: 0.25, illustrativeRate: 0.05875 },
+    // Bank Statement: rate depends on down-payment band.
+    bankStatement: {
+      minDownPct: 0.10,
+      rateByDown: {
+        '10to15': 0.0800,
+        '15to20': 0.0750,
+        '20plus': 0.0699,
+      },
+    },
+    pl: { minDownPct: 0.15, illustrativeRate: 0.0825 },
+    dscr: {
+      minDownPct: {
+        us_citizen_or_pr:         0.15,
+        ead:                      0.15,
+        investor_visa:            0.15,
+        tourist_student_itin:     0.20,
+        foreign_national_no_visa: 0.25,
+        none_of_above:            null, // manual review
+      },
+      // Rate by down-payment band. 20%+ confirmed; below-20% is a placeholder.
+      rateByDown: {
+        'below20': 0.0750,
+        '20plus':  0.0700,
+      },
+    },
+  },
+
+  pricingLabels: {
+    most_competitive: 'Most competitive pricing',
+    standard_nonqm:   'Standard Non-QM pricing',
+    specialty:        'Specialty program pricing',
+    manual:           'Manual pricing review needed',
+  },
+
+  display: {
+    showRatesToBorrower: false,
+    paymentRangeSpread: 0.03, // borrower-facing range = exact ± 3%
+  },
+
+  disclaimers: {
+    noCreditPull:
+      'No credit report will be pulled. Your credit score will not be affected.',
+    illustrationOnly:
+      'This is only an estimate. No credit pull. No obligation.',
+    results:
+      'Based on the information you provided, the programs below may fit your situation. ' +
+      'This is not a loan approval, not a mortgage application, and not a guaranteed rate quote. ' +
+      'No credit was pulled. Your final approval, rate, payment, down payment, and closing costs ' +
+      'depend on a complete mortgage review, including credit, income, assets, property details, ' +
+      'occupancy, documentation, market conditions, and lender guidelines.',
+    paymentRange:
+      'This range is for illustration only. Your final payment may be higher or lower depending on ' +
+      'credit, rate, taxes, insurance, HOA, loan amount, market conditions, and lender guidelines.',
+    contactConsent:
+      'By submitting this form, you agree to be contacted about mortgage options. This is not a ' +
+      'mortgage application and does not guarantee loan approval. No credit will be pulled unless ' +
+      'you later authorize a formal mortgage application.',
+    thankYou:
+      'Thank you. Your information was sent for review. No credit was pulled. ' +
+      'A mortgage advisor will review your answers and contact you to discuss possible options.',
+    hoaUnknown:
+      'Some properties, especially condos and townhomes, may have HOA or condo fees. ' +
+      'If the property has an HOA, your actual monthly payment may be higher.',
+  },
+};
+</script>
+
+
+<!-- ===========================================================================
+     SECTION 2 — ELIGIBILITY
+     Pure functions. Given an answers object, returns eligibility decisions
+     for FHA, Conventional, ITIN, Foreign National, Bank Statement, P&L, DSCR.
+     =========================================================================== -->
+<script>
+(function () {
+  var C = function () { return window.CONFIG; };
+
+  function fhaCreditBracket(cs) {
+    if (cs === 'below_620') return null;
+    if (cs === 'no_fico' || cs === 'unknown') return 'unknown';
+    if (cs === '620_639' || cs === '640_659' || cs === '660_679') return '620_679';
+    return '680_plus';
+  }
+  function convCreditBracket(cs) {
+    if (cs === 'below_620') return null;
+    if (cs === 'no_fico' || cs === 'unknown') return 'unknown';
+    return cs;
+  }
+  function pmiDownBracket(dn) {
+    if (dn < 0.05) return '3to5';
+    if (dn < 0.10) return '5to10';
+    if (dn < 0.15) return '10to15';
+    if (dn < 0.20) return '15to20';
+    return null;
+  }
+  function isSelfEmployedIncomeType(t) {
+    return t === 'self_employed_tax_returns' || t === 'self_employed_writeoffs' ||
+           t === 'bank_statements' || t === 'pl';
+  }
+  // ITIN credit tier: 'plus_700' (700+), 'mid_660' (660–699),
+  // 'sub_660' (620–659), 'no_fico' (no FICO), or null (below 620 = ineligible).
+  // The credit question's "680–719" bucket conservatively maps to mid_660
+  // because it spans both sides of 700.
+  function itinCreditTier(cs) {
+    if (cs === 'no_fico') return 'no_fico';
+    if (cs === 'below_620') return null;
+    if (cs === '720_739' || cs === '740_759' || cs === '760_plus') return 'plus_700';
+    if (cs === '620_639' || cs === '640_659') return 'sub_660';
+    if (cs === '660_679' || cs === '680_719') return 'mid_660';
+    if (cs === 'unknown') return 'sub_660'; // conservative default
+    return 'sub_660';
+  }
+  function selfEmployedTaxReturnStrength(a) {
+    if (!isSelfEmployedIncomeType(a.incomeType)) return 'n/a';
+    var strong = 0, weak = 0;
+    if (['100_150','150_250','over_250','75_100'].indexOf(a.seReportedIncome) >= 0) strong++;
+    if (['under_25','25_50'].indexOf(a.seReportedIncome) >= 0) weak++;
+    if (['10_20','20_40','over_40'].indexOf(a.seTaxesPaid) >= 0) strong++;
+    if (['under_5','refund'].indexOf(a.seTaxesPaid) >= 0) weak++;
+    if (a.seWriteOffs === 'no_most_shows') strong++;
+    if (a.seWriteOffs === 'yes_a_lot') weak++;
+    if (strong >= 1 && weak === 0) return 'strong';
+    if (weak >= 1 && strong === 0) return 'weak';
+    if (strong === 0 && weak === 0) return 'unknown';
+    return 'mixed';
+  }
+  function downPaymentPct(a) {
+    var price = Number(a.purchasePrice) || 0;
+    var dollar = Number(a.downPaymentDollar) || 0;
+    if (price > 0 && dollar > 0) return dollar / price;
+    if (a.downPaymentPercent) return Number(a.downPaymentPercent) / 100;
+    return 0;
+  }
+
+  function evaluateFHA(a) {
+    var blockers = [], reasons = [], manualReview = false;
+    var dn = downPaymentPct(a);
+    if (a.immigrationStatus !== 'us_citizen_or_pr')
+      blockers.push('FHA generally requires U.S. Citizenship or Permanent Resident status.');
+    if (a.propertyPurpose !== 'primary')
+      blockers.push('FHA is generally for primary residences only.');
+    if (dn > 0 && dn < C().fha.minDownPct)
+      blockers.push('FHA requires at least 3.5% down.');
+    if (a.creditScore === 'below_620')
+      blockers.push('FHA in this calculator requires a 620 or higher credit score.');
+    if (a.creditScore === 'no_fico')
+      blockers.push('FHA in this calculator requires a U.S. credit score.');
+    var incomeOK = false;
+    if (a.incomeType === 'w2') incomeOK = true;
+    else if (isSelfEmployedIncomeType(a.incomeType)) {
+      var s = selfEmployedTaxReturnStrength(a);
+      if (s === 'strong') incomeOK = true;
+      else if (s === 'mixed' || s === 'unknown') { incomeOK = true; manualReview = true; }
+    }
+    if (!incomeOK)
+      blockers.push('FHA generally needs W-2 or self-employed income that shows on tax returns.');
+    if (a.creditScore === 'unknown') manualReview = true;
+    if (blockers.length === 0)
+      reasons.push('You may meet the basic FHA conditions: primary residence, eligible status, and at least 3.5% down.');
+    return { key:'fha', name:'FHA', eligible:blockers.length===0, manualReview, reasons, blockers, pricingCategory:'most_competitive' };
+  }
+
+  function evaluateConventional(a) {
+    var blockers = [], reasons = [], manualReview = false;
+    var dn = downPaymentPct(a);
+    if (['us_citizen_or_pr','ead','investor_visa'].indexOf(a.immigrationStatus) < 0)
+      blockers.push('Conventional generally requires U.S. Citizenship, Permanent Resident, Employment Authorization, or Investor Visa with SSN.');
+    var minByOcc = a.propertyPurpose === 'investment' ? C().conventional.minDownPct.investment :
+                   a.propertyPurpose === 'second_home' ? C().conventional.minDownPct.secondHome :
+                   C().conventional.minDownPct.primary;
+    if (dn > 0 && dn < minByOcc)
+      blockers.push('Conventional requires at least ' + (minByOcc*100).toFixed(0) + '% down for this occupancy.');
+    if (a.creditScore === 'below_620')
+      blockers.push('Conventional in this calculator requires a 620 or higher credit score.');
+    if (a.creditScore === 'no_fico')
+      blockers.push('Conventional in this calculator requires a U.S. credit score.');
+    if (a.creditScore === 'unknown') manualReview = true;
+    var incomeOK = false;
+    if (a.incomeType === 'w2') incomeOK = true;
+    else if (isSelfEmployedIncomeType(a.incomeType)) {
+      var s = selfEmployedTaxReturnStrength(a);
+      if (s === 'strong') incomeOK = true;
+      else if (s === 'mixed' || s === 'unknown') { incomeOK = true; manualReview = true; }
+    }
+    if (!incomeOK)
+      blockers.push('Conventional generally needs W-2 or self-employed income shown on tax returns.');
+    if (blockers.length === 0)
+      reasons.push('You may meet the basic Conventional conditions for this property type and down payment.');
+    return { key:'conventional', name:'Conventional', eligible:blockers.length===0, manualReview, reasons, blockers, pricingCategory:'most_competitive' };
+  }
+
+  function evaluateITIN(a) {
+    var blockers = [], reasons = [], manualReview = false;
+    var dn = downPaymentPct(a);
+    if (a.immigrationStatus !== 'tourist_student_itin')
+      blockers.push('ITIN loans are designed for borrowers using an ITIN instead of an SSN.');
+    if (a.creditScore === 'below_620')
+      blockers.push('ITIN in this calculator requires a 620 or higher credit score.');
+    var tier = itinCreditTier(a.creditScore);
+    if (tier) {
+      var minDown = C().specialty.itin.minDownPctByCredit[tier];
+      if (dn > 0 && dn < minDown) {
+        var label = tier === 'no_fico' ? 'no FICO'
+                  : tier === 'sub_660' ? 'a credit score under 660'
+                  : tier === 'mid_660' ? 'a credit score from 660 to 699'
+                  : 'a credit score of 700+';
+        blockers.push('ITIN with ' + label + ' typically requires at least ' + (minDown*100).toFixed(0) + '% down.');
+      }
+    }
+    if (a.creditScore === 'unknown') manualReview = true;
+    // ITIN income-type allow-list: W-2, tax returns (incl. write-offs),
+    // bank statements, P&L. Anything else is blocked or manual review.
+    var allowedItinIncome = ['w2','self_employed_tax_returns','self_employed_writeoffs','bank_statements','pl'];
+    if (a.incomeType && allowedItinIncome.indexOf(a.incomeType) < 0) {
+      if (a.incomeType === 'unknown' || a.incomeType === 'other') {
+        manualReview = true;
+      } else {
+        blockers.push('ITIN in this calculator works with W-2, tax returns, bank statements, or P&L income.');
+      }
+    }
+    if (blockers.length === 0)
+      reasons.push('ITIN financing may fit if you use an ITIN instead of an SSN and meet the minimum down payment for your credit tier.');
+    return { key:'itin', name:'ITIN', eligible:blockers.length===0, manualReview, reasons, blockers, pricingCategory:'specialty' };
+  }
+
+  function evaluateForeignNational(a) {
+    var blockers = [], reasons = [], manualReview = false;
+    var dn = downPaymentPct(a);
+    var fnFit = a.immigrationStatus === 'foreign_national_no_visa' ||
+                a.incomeType === 'foreign_income' ||
+                a.incomeType === 'no_income_asset';
+    if (!fnFit)
+      blockers.push('Foreign National financing is designed for borrowers without a U.S. visa or using foreign income/asset documentation.');
+    if (dn > 0 && dn < C().specialty.foreignNational.minDownPct)
+      blockers.push('Foreign National loans typically require at least 25% down.');
+    if (blockers.length === 0) {
+      reasons.push('Foreign National financing may fit your profile and down payment.');
+      if (a.creditScore === 'no_fico')
+        reasons.push('Foreign National programs may allow no U.S. credit score.');
+    }
+    return { key:'foreign_national', name:'Foreign National', eligible:blockers.length===0, manualReview, reasons, blockers, pricingCategory:'specialty' };
+  }
+
+  function evaluateBankStatement(a) {
+    var blockers = [], reasons = [], manualReview = false;
+    var dn = downPaymentPct(a);
+    if (['us_citizen_or_pr','ead','investor_visa'].indexOf(a.immigrationStatus) < 0)
+      blockers.push('Bank Statement loans in this calculator require U.S. Citizenship, Permanent Resident, EAD, or Investor Visa with SSN.');
+    if (a.incomeType === 'w2')
+      blockers.push('Bank Statement loans are designed for self-employed borrowers, not W-2-only income.');
+    if (['self_employed_tax_returns','self_employed_writeoffs','bank_statements'].indexOf(a.incomeType) < 0) {
+      if (a.incomeType !== 'unknown')
+        blockers.push('Bank Statement loans need self-employed income documentable through business bank statements.');
+      else manualReview = true;
+    }
+    if (dn > 0 && dn < C().specialty.bankStatement.minDownPct)
+      blockers.push('Bank Statement loans typically require at least 10% down.');
+    if (a.creditScore === 'below_620')
+      blockers.push('Bank Statement loans in this calculator require a 620 or higher credit score.');
+    if (a.creditScore === 'no_fico')
+      blockers.push('Bank Statement loans in this calculator require a U.S. credit score.');
+    if (a.creditScore === 'unknown') manualReview = true;
+    if (blockers.length === 0)
+      reasons.push('Bank Statement financing may better reflect your real income if your tax returns show less because of write-offs.');
+    return { key:'bank_statement', name:'Bank Statement', eligible:blockers.length===0, manualReview, reasons, blockers, pricingCategory:'standard_nonqm' };
+  }
+
+  function evaluatePL(a) {
+    var blockers = [], reasons = [], manualReview = false;
+    var dn = downPaymentPct(a);
+    if (['us_citizen_or_pr','ead','investor_visa'].indexOf(a.immigrationStatus) < 0)
+      blockers.push('P&L loans in this calculator require U.S. Citizenship, Permanent Resident, EAD, or Investor Visa with SSN.');
+    if (a.incomeType === 'w2')
+      blockers.push('P&L loans are designed for self-employed borrowers, not W-2-only income.');
+    if (['self_employed_tax_returns','self_employed_writeoffs','pl'].indexOf(a.incomeType) < 0) {
+      if (a.incomeType !== 'unknown')
+        blockers.push('P&L loans need a self-employed P&L statement (often CPA-prepared).');
+      else manualReview = true;
+    }
+    if (dn > 0 && dn < C().specialty.pl.minDownPct)
+      blockers.push('P&L loans typically require at least 15% down.');
+    if (a.creditScore === 'below_620')
+      blockers.push('P&L loans in this calculator require a 620 or higher credit score.');
+    if (a.creditScore === 'no_fico')
+      blockers.push('P&L loans in this calculator require a U.S. credit score.');
+    if (a.creditScore === 'unknown') manualReview = true;
+    if (blockers.length === 0)
+      reasons.push('A P&L statement may document your self-employment income for qualifying.');
+    return { key:'pl', name:'P&L', eligible:blockers.length===0, manualReview, reasons, blockers, pricingCategory:'standard_nonqm' };
+  }
+
+  function evaluateDSCR(a) {
+    var blockers = [], reasons = [], manualReview = false;
+    var dn = downPaymentPct(a);
+    if (a.propertyPurpose !== 'investment') {
+      blockers.push('DSCR is normally used for investment properties only.');
+      return { key:'dscr', name:'DSCR', eligible:false, manualReview:false, reasons, blockers, pricingCategory:'specialty' };
+    }
+    var key = a.immigrationStatus === 'none_of_above' ? 'none_of_above' : a.immigrationStatus;
+    var minByImm = C().specialty.dscr.minDownPct[key];
+    if (minByImm == null) {
+      manualReview = true;
+      blockers.push('DSCR requires manual review for this immigration status.');
+    } else if (dn > 0 && dn < minByImm) {
+      blockers.push('DSCR requires at least ' + (minByImm*100).toFixed(0) + '% down for this profile.');
+    }
+    var isFN = a.immigrationStatus === 'foreign_national_no_visa';
+    if (a.creditScore === 'below_620')
+      blockers.push('DSCR in this calculator requires a 620 or higher credit score.');
+    if (a.creditScore === 'no_fico' && !isFN)
+      blockers.push('DSCR for this profile requires a U.S. credit score.');
+    if (a.creditScore === 'unknown') manualReview = true;
+    if (blockers.length === 0)
+      reasons.push('DSCR uses the property’s rent rather than your personal income for qualifying.');
+    return { key:'dscr', name:'DSCR', eligible:blockers.length===0, manualReview, reasons, blockers, pricingCategory:'specialty' };
+  }
+
+  function evaluateAll(a) {
+    return [
+      evaluateFHA(a), evaluateConventional(a), evaluateITIN(a),
+      evaluateForeignNational(a), evaluateBankStatement(a),
+      evaluatePL(a), evaluateDSCR(a),
+    ];
+  }
+
+  window.Eligibility = {
+    evaluateAll, selfEmployedTaxReturnStrength, isSelfEmployedIncomeType,
+    downPaymentPct, fhaCreditBracket, convCreditBracket, pmiDownBracket,
+    itinCreditTier,
+  };
+})();
+</script>
+
+
+<!-- ===========================================================================
+     SECTION 3 — CALCULATIONS
+     Loan amount, P&I, MI/PMI, escrows, DSCR ratio, formatters.
+     =========================================================================== -->
+<script>
+(function () {
+  var C = function () { return window.CONFIG; };
+  var E = function () { return window.Eligibility; };
+
+  // M = P × [r(1+r)^n] / [(1+r)^n - 1]
+  function principalAndInterest(loan, rate, years) {
+    var n = years * 12;
+    var r = rate / 12;
+    if (r === 0) return loan / n;
+    var f = Math.pow(1 + r, n);
+    return loan * (r * f) / (f - 1);
+  }
+  function monthlyTaxes(a) {
+    var price = Number(a.purchasePrice) || 0;
+    if (a.knowsTaxes === 'yes' && Number(a.annualTaxes) > 0) return Number(a.annualTaxes) / 12;
+    return (price * C().defaults.annualPropertyTaxPct) / 12;
+  }
+  function monthlyInsurance(a) {
+    var price = Number(a.purchasePrice) || 0;
+    if (a.propertyType === 'condo') {
+      if (a.knowsHO6 === 'yes' && Number(a.annualHO6) > 0) return Number(a.annualHO6) / 12;
+      return C().defaults.monthlyHO6;
+    }
+    if (a.knowsInsurance === 'yes' && Number(a.annualInsurance) > 0) return Number(a.annualInsurance) / 12;
+    return (price * C().defaults.annualHomeownersInsPct) / 12;
+  }
+  function monthlyHOA(a) {
+    if (a.hasHOA === 'yes' && Number(a.monthlyHOA) > 0) return Number(a.monthlyHOA);
+    return 0;
+  }
+  function downPaymentDollar(a) {
+    if (Number(a.downPaymentDollar) > 0) return Number(a.downPaymentDollar);
+    if (Number(a.downPaymentPercent) > 0 && Number(a.purchasePrice) > 0)
+      return (Number(a.downPaymentPercent) / 100) * Number(a.purchasePrice);
+    return 0;
+  }
+  function baseLoanAmount(a) {
+    var price = Number(a.purchasePrice) || 0;
+    return Math.max(0, price - downPaymentDollar(a));
+  }
+  function rateForProgram(key, a) {
+    var cs = a.creditScore;
+    var dn = E().downPaymentPct(a);
+    if (key === 'fha') {
+      var k = E().fhaCreditBracket(cs);
+      if (!k) return null;
+      return C().fha.rates[k];
+    }
+    if (key === 'conventional') {
+      var k2 = E().convCreditBracket(cs);
+      if (!k2) return null;
+      var tier = dn >= 0.20 ? '20plus' : 'below20';
+      return C().conventional.rates[k2][tier];
+    }
+    if (key === 'itin') {
+      var tier = E().itinCreditTier(cs);
+      return tier ? C().specialty.itin.rateByCredit[tier] : null;
+    }
+    if (key === 'foreign_national') return C().specialty.foreignNational.illustrativeRate;
+    if (key === 'bank_statement') {
+      var bsRates = C().specialty.bankStatement.rateByDown;
+      if (dn >= 0.20) return bsRates['20plus'];
+      if (dn >= 0.15) return bsRates['15to20'];
+      return bsRates['10to15'];
+    }
+    if (key === 'pl') return C().specialty.pl.illustrativeRate;
+    if (key === 'dscr') {
+      var dscrRates = C().specialty.dscr.rateByDown;
+      return dn >= 0.20 ? dscrRates['20plus'] : dscrRates['below20'];
+    }
+    return null;
+  }
+  function fhaUpfrontMip(a) { return baseLoanAmount(a) * C().fha.upfrontMipPct; }
+  function fhaMonthlyMi(a) {
+    var dn = E().downPaymentPct(a);
+    var f = dn < 0.05 ? C().fha.monthlyMipFactor.downBelow5 : C().fha.monthlyMipFactor.down5OrMore;
+    return (baseLoanAmount(a) * f) / 12;
+  }
+  function conventionalMonthlyPmi(a) {
+    var dn = E().downPaymentPct(a);
+    if (dn >= C().conventional.pmiCutoffPct) return 0;
+    var dk = E().pmiDownBracket(dn);
+    var ck = E().convCreditBracket(a.creditScore);
+    if (!dk || !ck || ck === 'unknown') return 0;
+    var f = C().conventional.pmi[dk][ck];
+    if (!f) return 0;
+    return (baseLoanAmount(a) * f) / 12;
+  }
+  function computeProgramPayment(key, a) {
+    var taxes = monthlyTaxes(a);
+    var ins = monthlyInsurance(a);
+    var hoa = monthlyHOA(a);
+    var base = baseLoanAmount(a);
+    var dn = E().downPaymentPct(a);
+    var rate = rateForProgram(key, a);
+    var term = C().loanTermYears;
+    var loanAmount = base, upfrontMip = 0, monthlyMi = 0, pi = 0;
+    if (key === 'fha') {
+      upfrontMip = fhaUpfrontMip(a);
+      loanAmount = base + upfrontMip;
+      monthlyMi = fhaMonthlyMi(a);
+      pi = rate ? principalAndInterest(loanAmount, rate, term) : 0;
+    } else if (key === 'conventional') {
+      monthlyMi = conventionalMonthlyPmi(a);
+      pi = rate ? principalAndInterest(loanAmount, rate, term) : 0;
+    } else {
+      pi = rate ? principalAndInterest(loanAmount, rate, term) : 0;
+    }
+    var piti = pi + monthlyMi + taxes + ins + hoa;
+    var spread = C().display.paymentRangeSpread;
+    var range = { low: piti * (1 - spread), high: piti * (1 + spread) };
+    var closingCostsEst = (Number(a.purchasePrice) || 0) * 0.03;
+    var totalCashNeeded = downPaymentDollar(a) + closingCostsEst;
+    return {
+      programKey: key, rate, loanAmount,
+      basePrice: Number(a.purchasePrice) || 0,
+      downPaymentDollar: downPaymentDollar(a), downPaymentPct: dn,
+      principalAndInterest: pi, upfrontMip, monthlyMi,
+      monthlyTaxes: taxes, monthlyInsurance: ins, monthlyHOA: hoa,
+      totalMonthly: piti, paymentRange: range, closingCostsEst, totalCashNeeded,
+    };
+  }
+  function dscrRatio(a) {
+    var rent = Number(a.estimatedRent) || 0;
+    if (rent <= 0) return null;
+    var calc = computeProgramPayment('dscr', a);
+    if (!calc.totalMonthly) return null;
+    return rent / calc.totalMonthly;
+  }
+  function frontEndDti(a, total) {
+    var inc = Number(a.monthlyIncome) || 0;
+    if (inc <= 0) return null;
+    return total / inc;
+  }
+  function backEndDti(a, total) {
+    var inc = Number(a.monthlyIncome) || 0;
+    if (inc <= 0) return null;
+    return (total + (Number(a.monthlyDebts) || 0)) / inc;
+  }
+  function fmtMoney(n) {
+    if (n == null || isNaN(n)) return '—';
+    return '$' + Math.round(n).toLocaleString('en-US');
+  }
+  function fmtPct(n, d) {
+    if (n == null || isNaN(n)) return '—';
+    return (n * 100).toFixed(d == null ? 2 : d) + '%';
+  }
+
+  window.Calculations = {
+    principalAndInterest, monthlyTaxes, monthlyInsurance, monthlyHOA,
+    downPaymentDollar, baseLoanAmount, rateForProgram,
+    fhaUpfrontMip, fhaMonthlyMi, conventionalMonthlyPmi,
+    computeProgramPayment, dscrRatio, frontEndDti, backEndDti,
+    fmtMoney, fmtPct,
+  };
+})();
+</script>
+
+
+<!-- ===========================================================================
+     SECTION 4 — REACT APP (components + main App)
+     =========================================================================== -->
+<script type="text/babel" data-presets="react">
+(function () {
+  const { useState, useMemo } = React;
+  const C = window.CONFIG;
+  const E = window.Eligibility;
+  const F = window.Calculations;
+  const cx = (...xs) => xs.filter(Boolean).join(' ');
+
+  /* ---------- Option lists ---------- */
+  const IMMIGRATION_OPTIONS = [
+    { value: 'us_citizen_or_pr',         label: 'U.S. Citizen or Permanent Resident / Green Card' },
+    { value: 'ead',                      label: 'Employment Authorization Card' },
+    { value: 'investor_visa',            label: 'Investor Visa with Social Security Number' },
+    { value: 'tourist_student_itin',     label: 'Tourist Visa or Student Visa with ITIN' },
+    { value: 'foreign_national_no_visa', label: 'Foreign National with no U.S. visa' },
+    { value: 'none_of_above',            label: 'None of the above' },
+  ];
+  const PROPERTY_PURPOSE_OPTIONS = [
+    { value: 'primary',     label: 'Primary residence' },
+    { value: 'second_home', label: 'Second home' },
+    { value: 'investment',  label: 'Investment property' },
+  ];
+  const PROPERTY_TYPE_OPTIONS = [
+    { value: 'sfh',       label: 'Single-family home' },
+    { value: 'townhouse', label: 'Townhouse' },
+    { value: 'condo',     label: 'Condo' },
+    { value: 'multi_2_4', label: '2–4 unit property' },
+    { value: 'unsure',    label: 'Not sure yet' },
+  ];
+  const DOWN_RANGE_OPTIONS = [
+    { value: '3_5',     label: '3% to 5%' },
+    { value: '5_10',    label: '5% to 10%' },
+    { value: '10_15',   label: '10% to 15%' },
+    { value: '15_20',   label: '15% to 20%' },
+    { value: '20_25',   label: '20% to 25%' },
+    { value: 'over_25', label: '25% or more' },
+  ];
+  const INCOME_TYPE_OPTIONS = [
+    { value: 'w2',                         label: 'W-2 employee' },
+    { value: 'self_employed_tax_returns',  label: 'Self-employed using tax returns' },
+    { value: 'self_employed_writeoffs',    label: 'Self-employed but write off a lot of expenses' },
+    { value: 'bank_statements',            label: 'Business bank statements' },
+    { value: 'pl',                         label: 'Profit & Loss statement' },
+    { value: 'foreign_income',             label: 'Foreign income' },
+    { value: 'rental_real_estate',         label: 'Rental income / real estate investor' },
+    { value: 'no_income_asset',            label: 'No income / asset-based / foreign national documentation' },
+    { value: 'other',                      label: 'Other' },
+    { value: 'unknown',                    label: 'I don’t know' },
+  ];
+  const W2_TREND_OPTIONS = [
+    { value: 'same',     label: 'About the same' },
+    { value: 'higher',   label: 'Higher' },
+    { value: 'lower',    label: 'Lower' },
+    { value: 'not_sure', label: 'Not sure' },
+  ];
+  const SE_REPORTED_OPTIONS = [
+    { value: 'under_25',  label: 'Less than $25,000' },
+    { value: '25_50',     label: '$25,000 to $50,000' },
+    { value: '50_75',     label: '$50,000 to $75,000' },
+    { value: '75_100',    label: '$75,000 to $100,000' },
+    { value: '100_150',   label: '$100,000 to $150,000' },
+    { value: '150_250',   label: '$150,000 to $250,000' },
+    { value: 'over_250',  label: 'More than $250,000' },
+    { value: 'unknown',   label: 'I don’t know' },
+  ];
+  const SE_WRITEOFF_OPTIONS = [
+    { value: 'yes_a_lot',     label: 'Yes, I write off a lot' },
+    { value: 'some',          label: 'Some, but not too much' },
+    { value: 'no_most_shows', label: 'No, my tax return shows most of my income' },
+    { value: 'not_sure',      label: 'I’m not sure' },
+  ];
+  const SE_TAXES_OPTIONS = [
+    { value: 'under_5',   label: 'Less than $5,000' },
+    { value: '5_10',      label: '$5,000 to $10,000' },
+    { value: '10_20',     label: '$10,000 to $20,000' },
+    { value: '20_40',     label: '$20,000 to $40,000' },
+    { value: 'over_40',   label: 'More than $40,000' },
+    { value: 'refund',    label: 'I usually get a refund' },
+    { value: 'unknown',   label: 'I don’t know' },
+  ];
+  const CREDIT_OPTIONS = [
+    { value: 'no_fico',    label: 'No U.S. credit score / No FICO' },
+    { value: 'below_620',  label: 'Below 620' },
+    { value: '620_639',    label: '620–639' },
+    { value: '640_659',    label: '640–659' },
+    { value: '660_679',    label: '660–679' },
+    { value: '680_719',    label: '680–719' },
+    { value: '720_739',    label: '720–739' },
+    { value: '740_759',    label: '740–759' },
+    { value: '760_plus',   label: '760+' },
+    { value: 'unknown',    label: 'I don’t know' },
+  ];
+  const COBORROWER_OPTIONS = [
+    { value: 'alone',         label: 'Buying alone' },
+    { value: 'spouse',        label: 'Buying with spouse' },
+    { value: 'family',        label: 'Buying with another family member' },
+    { value: 'other_person',  label: 'Buying with another person' },
+    { value: 'not_sure',      label: 'Not sure yet' },
+  ];
+  const YES_NO_KNOW = [
+    { value: 'yes', label: 'Yes, I know the amount' },
+    { value: 'no',  label: 'No, use an estimate' },
+  ];
+  const HOA_OPTIONS = [
+    { value: 'yes',     label: 'Yes' },
+    { value: 'no',      label: 'No' },
+    { value: 'unknown', label: 'I don’t know' },
+  ];
+
+  const isSelfEmployedAnswer = (a) =>
+    ['self_employed_tax_returns','self_employed_writeoffs','bank_statements','pl'].includes(a.incomeType);
+
+  /* ---------- Question list ---------- */
+  const QUESTIONS = [
+    { id:'immigrationStatus', title:'What is your immigration status?', type:'choice', options:IMMIGRATION_OPTIONS },
+    { id:'propertyPurpose',   title:'How will you use the property?',    type:'choice', options:PROPERTY_PURPOSE_OPTIONS },
+    { id:'propertyType',      title:'What type of property are you buying?', type:'choice', options:PROPERTY_TYPE_OPTIONS },
+    { id:'downPaymentRange',  title:'How much do you have available for down payment?', type:'choice', options:DOWN_RANGE_OPTIONS },
+    { id:'incomeType',        title:'What type of income do you have?',  type:'choice', options:INCOME_TYPE_OPTIONS },
+
+    { id:'w2Income',      title:'What was your approximate gross income last year before taxes?',
+      helper:'This is usually the total income on your W-2 before taxes are taken out.', type:'numeric',
+      show:(a)=>a.incomeType==='w2' },
+    { id:'w2IncomeTrend', title:'Is your current income about the same, higher, or lower than last year?',
+      type:'choice', options:W2_TREND_OPTIONS, show:(a)=>a.incomeType==='w2' },
+
+    { id:'seReportedIncome', title:'After your business expenses and write-offs, about how much income did you report on your tax return last year?',
+      helper:'This is not your gross sales. We are trying to estimate the income left after business expenses and deductions. A rough estimate is okay.',
+      type:'choice', options:SE_REPORTED_OPTIONS, show:isSelfEmployedAnswer },
+    { id:'seWriteOffs',    title:'Do you usually write off a lot of expenses on your tax return?',
+      type:'choice', options:SE_WRITEOFF_OPTIONS, show:isSelfEmployedAnswer },
+    { id:'seTaxesPaid',    title:'Do you remember roughly how much you paid in federal income taxes last year?',
+      helper:'This does not need to be exact. It helps us estimate whether your tax return may show enough income for FHA or Conventional financing.',
+      type:'choice', options:SE_TAXES_OPTIONS, show:isSelfEmployedAnswer },
+
+    { id:'creditScore', title:'What is your estimated credit score?', type:'choice', options:CREDIT_OPTIONS },
+    { id:'coBorrower',  title:'Are you buying alone or with another borrower?', type:'choice', options:COBORROWER_OPTIONS },
+
+    { id:'monthlyIncome', title:'How much is your gross monthly income?',
+      helper:'If your loan will use asset-based or foreign-national documentation, you can enter $0 and continue.',
+      type:'numeric', allowZero:true },
+    { id:'monthlyDebts',  title:'How much do you pay monthly in debts?',
+      helper:'Include car payments, credit cards, student loans, personal loans, child support, and other recurring debts.',
+      type:'numeric', allowZero:true },
+    { id:'availableCash', title:'How much cash do you have available total for down payment and closing costs?', type:'numeric' },
+    { id:'purchasePrice', title:'What purchase price are you considering?', type:'numeric' },
+    { id:'downPaymentInput', title:'How much are you planning to put down?', type:'downPayment' },
+
+    { id:'knowsTaxes',  title:'Do you know the estimated annual property taxes?', type:'choice', options:YES_NO_KNOW },
+    { id:'annualTaxes', title:'What are the estimated annual property taxes?', type:'numeric', show:(a)=>a.knowsTaxes==='yes' },
+
+    { id:'knowsInsurance',  title:'Do you know the estimated annual homeowners insurance?',
+      type:'choice', options:YES_NO_KNOW, show:(a)=>a.propertyType!=='condo' },
+    { id:'annualInsurance', title:'What is the estimated annual homeowners insurance premium?',
+      type:'numeric', show:(a)=>a.propertyType!=='condo' && a.knowsInsurance==='yes' },
+    { id:'knowsHO6',  title:'Do you know the annual HO-6 condo insurance premium?',
+      type:'choice', options:YES_NO_KNOW, show:(a)=>a.propertyType==='condo' },
+    { id:'annualHO6', title:'What is the estimated annual HO-6 condo insurance premium?',
+      type:'numeric', show:(a)=>a.propertyType==='condo' && a.knowsHO6==='yes' },
+
+    { id:'hasHOA',     title:'Does the property have an HOA or condo association fee?', type:'choice', options:HOA_OPTIONS },
+    { id:'monthlyHOA', title:'What is the estimated monthly HOA or condo fee?', type:'numeric', show:(a)=>a.hasHOA==='yes' },
+
+    { id:'estimatedRent', title:'What is the estimated monthly rent for the property?',
+      helper:'This is used to estimate whether the property’s rent may cover the loan payment (DSCR ratio).',
+      type:'numeric', show:(a)=>a.propertyPurpose==='investment' },
+  ];
+
+  const initialAnswers = {
+    immigrationStatus:'', propertyPurpose:'', propertyType:'',
+    downPaymentRange:'', incomeType:'',
+    w2Income:'', w2IncomeTrend:'',
+    seReportedIncome:'', seWriteOffs:'', seTaxesPaid:'',
+    creditScore:'', coBorrower:'',
+    monthlyIncome:'', monthlyDebts:'', availableCash:'', purchasePrice:'',
+    downPaymentPercent:'', downPaymentDollar:'',
+    knowsTaxes:'', annualTaxes:'',
+    knowsInsurance:'', annualInsurance:'',
+    knowsHO6:'', annualHO6:'',
+    hasHOA:'', monthlyHOA:'',
+    estimatedRent:'',
+  };
+
+  function getActiveQuestions(a) {
+    return QUESTIONS.filter(q => !q.show || q.show(a));
+  }
+  function answerReady(q, a) {
+    if (q.type === 'choice') return !!a[q.id];
+    if (q.type === 'numeric') {
+      const v = a[q.id];
+      if (q.allowZero) return v !== '' && v !== null && !isNaN(Number(v));
+      return Number(v) > 0;
+    }
+    if (q.type === 'downPayment')
+      return Number(a.downPaymentPercent) > 0 || Number(a.downPaymentDollar) > 0;
+    return false;
+  }
+
+  /* ---------- Components ---------- */
+
+  function TopBar({ onRestart, showRestart }) {
+    return (
+      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-sm font-bold">M</div>
+            <div className="text-sm font-semibold text-slate-900">Mortgage Fit Estimator</div>
+          </div>
+          {showRestart && (
+            <button onClick={onRestart} className="text-xs text-slate-500 hover:text-slate-700">Start over</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function ProgressBar({ current, total }) {
+    const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    return (
+      <div className="px-4 pt-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="flex justify-between text-xs text-slate-500 mb-1">
+            <span>Question {Math.min(current + 1, total)} of {total}</span>
+            <span>{pct}%</span>
+          </div>
+          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div className="h-full bg-slate-900 transition-all duration-300" style={{ width: pct + '%' }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function Landing({ onStart }) {
+    const D = C.disclaimers;
+    return (
+      <div className="max-w-2xl mx-auto px-4 pt-10 pb-16">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium mb-4">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            No credit pull · Estimate only
+          </div>
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 leading-tight">
+            Find out which mortgage options may fit you — without pulling your credit.
+          </h1>
+          <p className="mt-3 text-slate-600 leading-relaxed">
+            This tool gives you a rough estimate based on the information you provide.
+            It is not a mortgage application, not a loan approval, and not a guaranteed rate quote.
+          </p>
+          <div className="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="font-semibold text-slate-900 text-sm">{D.noCreditPull}</div>
+          </div>
+          <button
+            onClick={onStart}
+            className="mt-6 w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-4 rounded-xl text-base transition-colors"
+          >Start Estimate</button>
+          <p className="mt-3 text-xs text-slate-500 text-center">{D.illustrationOnly}</p>
+        </div>
+      </div>
+    );
+  }
+
+  function QuestionStep({ title, helper, children, onBack, canBack, onNext, canNext, nextLabel }) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 pt-6 pb-24">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 md:p-7">
+          <h2 className="text-xl md:text-2xl font-semibold text-slate-900 leading-snug">{title}</h2>
+          {helper && <p className="mt-2 text-sm text-slate-500">{helper}</p>}
+          <div className="mt-5">{children}</div>
+          <div className="mt-6 flex items-center justify-between">
+            <button onClick={onBack} disabled={!canBack}
+              className={cx('px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                canBack ? 'text-slate-700 hover:bg-slate-100' : 'text-slate-300 cursor-not-allowed')}
+            >← Back</button>
+            {onNext && (
+              <button onClick={onNext} disabled={!canNext}
+                className={cx('px-6 py-2.5 rounded-lg text-sm font-semibold transition-colors',
+                  canNext ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-slate-200 text-slate-400 cursor-not-allowed')}
+              >{nextLabel || 'Continue'}</button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function MultipleChoiceQuestion({ value, options, onSelect }) {
+    return (
+      <div className="grid gap-2">
+        {options.map((opt) => {
+          const active = value === opt.value;
+          return (
+            <button key={opt.value} onClick={() => onSelect(opt.value)}
+              className={cx('text-left w-full p-4 rounded-xl border-2 transition-all',
+                active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 hover:border-slate-400 bg-white text-slate-800')}
+            >
+              <div className="text-sm md:text-base font-medium">{opt.label}</div>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function NumericInputQuestion({ value, onChange, placeholder, prefix = '$', suffix }) {
+    const display = value === '' || value == null ? '' : Number(value).toLocaleString('en-US');
+    return (
+      <div className="flex items-center gap-2">
+        {prefix && <span className="text-xl text-slate-500">{prefix}</span>}
+        <input type="text" inputMode="numeric" value={display} placeholder={placeholder}
+          onChange={(e) => {
+            const raw = e.target.value.replace(/[^0-9.]/g, '');
+            onChange(raw === '' ? '' : Number(raw));
+          }}
+          className="w-full text-xl md:text-2xl font-semibold border-0 border-b-2 border-slate-200 focus:border-slate-900 outline-none px-1 py-2 bg-transparent"
+        />
+        {suffix && <span className="text-base text-slate-500">{suffix}</span>}
+      </div>
+    );
+  }
+
+  function DownPaymentQuestion({ purchasePrice, downPercent, downDollar, onChangePercent, onChangeDollar }) {
+    const [mode, setMode] = useState('percent');
+    const price = Number(purchasePrice) || 0;
+    const derivedDollar = mode === 'percent' && downPercent !== '' && price > 0
+      ? Math.round((Number(downPercent) / 100) * price) : Number(downDollar) || 0;
+    const derivedPercent = mode === 'dollar' && downDollar !== '' && price > 0
+      ? ((Number(downDollar) / price) * 100).toFixed(1) : Number(downPercent) || 0;
+    return (
+      <div>
+        <div className="flex gap-2 mb-4">
+          <button onClick={() => setMode('percent')}
+            className={cx('flex-1 py-2 rounded-lg text-sm font-medium border-2 transition-all',
+              mode === 'percent' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600')}
+          >Percentage</button>
+          <button onClick={() => setMode('dollar')}
+            className={cx('flex-1 py-2 rounded-lg text-sm font-medium border-2 transition-all',
+              mode === 'dollar' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600')}
+          >Dollar amount</button>
+        </div>
+        {mode === 'percent' ? (
+          <NumericInputQuestion value={downPercent}
+            onChange={(v) => {
+              onChangePercent(v);
+              if (price > 0 && v !== '') onChangeDollar(Math.round((Number(v) / 100) * price));
+            }}
+            placeholder="0" prefix="" suffix="%"
+          />
+        ) : (
+          <NumericInputQuestion value={downDollar}
+            onChange={(v) => {
+              onChangeDollar(v);
+              if (price > 0 && v !== '') onChangePercent(((Number(v) / price) * 100).toFixed(1));
+            }}
+            placeholder="0"
+          />
+        )}
+        <div className="mt-4 p-3 bg-slate-50 rounded-lg text-sm text-slate-600">
+          {mode === 'percent'
+            ? <span>That’s about <strong>${derivedDollar.toLocaleString()}</strong> down on a ${price.toLocaleString()} price.</span>
+            : <span>That’s about <strong>{derivedPercent}%</strong> down on a ${price.toLocaleString()} price.</span>}
+        </div>
+      </div>
+    );
+  }
+
+  function Stat({ label, value }) {
+    return (
+      <div className="rounded-lg bg-slate-50 p-3">
+        <div className="text-xs text-slate-500">{label}</div>
+        <div className="text-sm font-semibold text-slate-900 mt-0.5">{value}</div>
+      </div>
+    );
+  }
+
+  function ProgramResultCard({ program, calc, dscrInfo }) {
+    const label = C.pricingLabels[program.manualReview ? 'manual' : program.pricingCategory];
+    const showRate = C.display.showRatesToBorrower && calc.rate != null;
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-wider text-slate-500 font-semibold">May fit</div>
+            <h3 className="text-lg md:text-xl font-bold text-slate-900 mt-1">{program.name}</h3>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-slate-500">Pricing category</div>
+            <div className="text-sm font-semibold text-slate-900">{label}</div>
+          </div>
+        </div>
+        {program.reasons.length > 0 && (
+          <ul className="mt-3 text-sm text-slate-600 space-y-1">
+            {program.reasons.map((r, i) => <li key={i}>• {r}</li>)}
+          </ul>
+        )}
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <Stat label="Estimated payment range" value={`${F.fmtMoney(calc.paymentRange.low)} – ${F.fmtMoney(calc.paymentRange.high)}/mo`} />
+          <Stat label="Min down payment" value={`${(calc.downPaymentPct * 100).toFixed(1)}%`} />
+          <Stat label="Estimated mortgage insurance" value={calc.monthlyMi > 0 ? `${F.fmtMoney(calc.monthlyMi)}/mo` : 'None'} />
+          {calc.upfrontMip > 0 && <Stat label="Upfront mortgage insurance" value={F.fmtMoney(calc.upfrontMip)} />}
+          <Stat label="Estimated total cash needed" value={F.fmtMoney(calc.totalCashNeeded)} />
+          {showRate && <Stat label="Illustrative rate" value={F.fmtPct(calc.rate, 3)} />}
+        </div>
+        {dscrInfo && (
+          <div className="mt-4 p-3 rounded-lg bg-slate-50 text-sm text-slate-700">
+            <div className="font-semibold mb-1">DSCR estimate</div>
+            {dscrInfo.ratio != null
+              ? (dscrInfo.ratio >= 1.0
+                  ? `Estimated DSCR ratio: ${dscrInfo.ratio.toFixed(2)}. Based on the estimated rent, the property may fit a DSCR structure, subject to lender guidelines.`
+                  : `Estimated DSCR ratio: ${dscrInfo.ratio.toFixed(2)}. Based on the estimated rent, the property may not fully cover the payment. DSCR may still be possible with a larger down payment, better rate, lower purchase price, or a lender exception.`)
+              : 'Add an estimated monthly rent to see the DSCR ratio.'}
+          </div>
+        )}
+        <p className="mt-4 text-xs text-slate-500">{C.disclaimers.paymentRange}</p>
+      </div>
+    );
+  }
+
+  function RuledOutCard({ program }) {
+    return (
+      <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+        <div className="flex items-center justify-between">
+          <div className="font-semibold text-slate-700">{program.name}</div>
+          <div className="text-xs text-slate-500">May not fit</div>
+        </div>
+        <ul className="mt-2 text-sm text-slate-600 space-y-1">
+          {program.blockers.map((b, i) => <li key={i}>• {b}</li>)}
+        </ul>
+      </div>
+    );
+  }
+
+  function Field({ label, value, onChange, multiline }) {
+    return (
+      <div>
+        <div className="text-xs font-medium text-slate-600 mb-1">{label}</div>
+        {multiline ? (
+          <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 outline-none" />
+        ) : (
+          <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 outline-none" />
+        )}
+      </div>
+    );
+  }
+
+  function ContactForm({ onSubmit, submitting }) {
+    const [form, setForm] = useState({
+      name:'', phone:'', email:'', preferredContact:'phone', bestTime:'', message:'',
+    });
+    const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+    const valid = form.name.trim() && (form.phone.trim() || form.email.trim());
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 shadow-sm">
+        <h3 className="text-xl font-bold text-slate-900">Want a full review?</h3>
+        <p className="text-sm text-slate-600 mt-1">
+          Send your answers to a mortgage advisor. {C.disclaimers.noCreditPull}
+        </p>
+        <div className="mt-4 grid gap-3">
+          <Field label="Name" value={form.name} onChange={(v)=>update('name',v)} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Phone" value={form.phone} onChange={(v)=>update('phone',v)} />
+            <Field label="Email" value={form.email} onChange={(v)=>update('email',v)} />
+          </div>
+          <div>
+            <div className="text-xs font-medium text-slate-600 mb-1">Preferred contact method</div>
+            <div className="flex gap-2">
+              {[{v:'phone',l:'Phone'},{v:'text',l:'Text'},{v:'email',l:'Email'}].map(({v,l})=>(
+                <button key={v} onClick={()=>update('preferredContact',v)}
+                  className={cx('flex-1 py-2 rounded-lg text-sm font-medium border-2 transition-all',
+                    form.preferredContact===v?'border-slate-900 bg-slate-900 text-white':'border-slate-200 text-slate-700')}
+                >{l}</button>
+              ))}
+            </div>
+          </div>
+          <Field label="Best time to call" value={form.bestTime} onChange={(v)=>update('bestTime',v)} />
+          <Field label="Optional message" value={form.message} onChange={(v)=>update('message',v)} multiline />
+        </div>
+        <p className="mt-4 text-xs text-slate-500">{C.disclaimers.contactConsent}</p>
+        <button onClick={()=> valid && onSubmit(form)} disabled={!valid || submitting}
+          className={cx('mt-4 w-full py-3.5 rounded-xl font-semibold transition-colors',
+            valid && !submitting ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-slate-200 text-slate-400 cursor-not-allowed')}
+        >{submitting ? 'Sending…' : 'Send my results for review'}</button>
+      </div>
+    );
+  }
+
+  function AdvisorSummary({ summary }) {
+    const [open, setOpen] = useState(false);
+    return (
+      <div className="bg-white rounded-2xl border border-slate-300 border-dashed p-5 md:p-6">
+        <button onClick={()=>setOpen(!open)} className="w-full flex items-center justify-between text-left">
+          <div>
+            <div className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Internal use</div>
+            <div className="font-semibold text-slate-900">Mortgage advisor lead summary</div>
+          </div>
+          <span className="text-slate-500 text-sm">{open ? 'Hide' : 'Show'}</span>
+        </button>
+        {open && (
+          <pre className="mt-4 whitespace-pre-wrap text-xs leading-relaxed text-slate-700 bg-slate-50 p-3 rounded-lg overflow-x-auto">
+{summary}
+          </pre>
+        )}
+      </div>
+    );
+  }
+
+  function ThankYou({ onRestart }) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 pt-10 pb-16">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 text-center">
+          <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 mx-auto flex items-center justify-center text-xl">✓</div>
+          <h2 className="mt-4 text-2xl font-bold text-slate-900">Thank you</h2>
+          <p className="mt-2 text-slate-600">{C.disclaimers.thankYou}</p>
+          <button onClick={onRestart}
+            className="mt-6 px-6 py-2.5 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800"
+          >Start a new estimate</button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- Internal advisor summary builder ---------- */
+  function buildAdvisorSummary(answers, evals, contact) {
+    const labelOf = (opts, val) => (opts.find(o => o.value === val) || {}).label || val || '—';
+    const dnPct = E.downPaymentPct(answers);
+    const dnDollar = F.downPaymentDollar(answers);
+    const taxesUsed = answers.knowsTaxes==='yes' && Number(answers.annualTaxes)>0
+      ? `Borrower input: $${Number(answers.annualTaxes).toLocaleString()}/yr`
+      : `Default 1.50% of price (~$${Math.round((Number(answers.purchasePrice)||0)*C.defaults.annualPropertyTaxPct).toLocaleString()}/yr)`;
+    const insUsed = answers.propertyType==='condo'
+      ? (answers.knowsHO6==='yes' && Number(answers.annualHO6)>0
+          ? `Condo HO-6 input: $${Number(answers.annualHO6).toLocaleString()}/yr`
+          : `Default condo HO-6 ~$${C.defaults.monthlyHO6}/mo`)
+      : (answers.knowsInsurance==='yes' && Number(answers.annualInsurance)>0
+          ? `Borrower input: $${Number(answers.annualInsurance).toLocaleString()}/yr`
+          : `Default 0.80% of price (~$${Math.round((Number(answers.purchasePrice)||0)*C.defaults.annualHomeownersInsPct).toLocaleString()}/yr)`);
+    const hoaUsed = answers.hasHOA==='yes' && Number(answers.monthlyHOA)>0
+      ? `Borrower input: $${Number(answers.monthlyHOA).toLocaleString()}/mo`
+      : answers.hasHOA==='unknown' ? 'Unknown — used $0 for estimate' : '$0';
+
+    const eligible = evals.filter(p => p.eligible);
+    const ruled = evals.filter(p => !p.eligible);
+    const eligibleLines = eligible.map(p => {
+      const calc = F.computeProgramPayment(p.key, answers);
+      const rate = calc.rate != null ? (calc.rate*100).toFixed(3)+'%' : '—';
+      return [
+        `  - ${p.name}${p.manualReview?' (MANUAL REVIEW)':''}`,
+        `      Illustrative rate: ${rate}`,
+        `      Loan amount: $${Math.round(calc.loanAmount).toLocaleString()}`,
+        `      P&I: $${Math.round(calc.principalAndInterest).toLocaleString()}/mo`,
+        `      MI/PMI: $${Math.round(calc.monthlyMi).toLocaleString()}/mo${calc.upfrontMip>0?`  (upfront $${Math.round(calc.upfrontMip).toLocaleString()})`:''}`,
+        `      Taxes: $${Math.round(calc.monthlyTaxes).toLocaleString()}/mo`,
+        `      Insurance: $${Math.round(calc.monthlyInsurance).toLocaleString()}/mo`,
+        `      HOA: $${Math.round(calc.monthlyHOA).toLocaleString()}/mo`,
+        `      Total PITI(A): $${Math.round(calc.totalMonthly).toLocaleString()}/mo`,
+        `      Borrower-facing range: $${Math.round(calc.paymentRange.low).toLocaleString()} – $${Math.round(calc.paymentRange.high).toLocaleString()}/mo`,
+        `      Total cash needed est.: $${Math.round(calc.totalCashNeeded).toLocaleString()}`,
+      ].join('\n');
+    }).join('\n');
+    const ruledLines = ruled.map(p => `  - ${p.name}: ${p.blockers.join('; ')}`).join('\n');
+    const dscrLine = answers.propertyPurpose==='investment'
+      ? (() => {
+          const r = F.dscrRatio(answers);
+          return r==null
+            ? '\nDSCR ratio: rent not provided'
+            : `\nDSCR ratio: ${r.toFixed(2)} (rent $${Number(answers.estimatedRent||0).toLocaleString()} / DSCR PITIA)`;
+        })()
+      : '';
+    const dti = (() => {
+      if (eligible.length === 0) return '';
+      const calc = F.computeProgramPayment(eligible[0].key, answers);
+      const front = F.frontEndDti(answers, calc.totalMonthly);
+      const back = F.backEndDti(answers, calc.totalMonthly);
+      if (front == null) return '';
+      return `\nFront-end DTI (using ${eligible[0].name}): ${(front*100).toFixed(1)}%` +
+             (back != null ? ` | Back-end DTI: ${(back*100).toFixed(1)}%` : '');
+    })();
+    const followUps = [
+      '- Confirm immigration documentation',
+      '- Confirm SSN vs ITIN',
+      '- Confirm whether tax returns show enough income',
+      '- Ask if borrower writes off significant expenses',
+      '- Ask whether bank statements or P&L better reflect income',
+      '- Confirm down payment funds and reserves',
+      '- Confirm property type and HOA',
+      '- Confirm estimated taxes and insurance',
+      '- Confirm credit before quoting any actual rate',
+      answers.propertyPurpose==='investment' ? '- Confirm market rent and DSCR ratio' : null,
+    ].filter(Boolean).join('\n');
+
+    return [
+      '=========================================',
+      'INTERNAL MORTGAGE ADVISOR LEAD SUMMARY',
+      '=========================================',
+      contact ? `Contact: ${contact.name} | ${contact.phone||'—'} | ${contact.email||'—'}` : 'Contact: (not yet submitted)',
+      contact ? `Preferred: ${contact.preferredContact} | Best time: ${contact.bestTime||'—'}` : '',
+      contact && contact.message ? `Message: ${contact.message}` : '',
+      '',
+      '--- Borrower profile ---',
+      `Immigration: ${labelOf(IMMIGRATION_OPTIONS, answers.immigrationStatus)}`,
+      `Property purpose: ${labelOf(PROPERTY_PURPOSE_OPTIONS, answers.propertyPurpose)}`,
+      `Property type: ${labelOf(PROPERTY_TYPE_OPTIONS, answers.propertyType)}`,
+      `Down payment range (initial): ${labelOf(DOWN_RANGE_OPTIONS, answers.downPaymentRange)}`,
+      `Down payment entered: ${(dnPct*100).toFixed(2)}% ($${Math.round(dnDollar).toLocaleString()})`,
+      `Income type: ${labelOf(INCOME_TYPE_OPTIONS, answers.incomeType)}`,
+      answers.incomeType==='w2'
+        ? `W-2 last year: $${Number(answers.w2Income||0).toLocaleString()} | Trend: ${labelOf(W2_TREND_OPTIONS, answers.w2IncomeTrend)}`
+        : '',
+      isSelfEmployedAnswer(answers)
+        ? `Self-employed reported income: ${labelOf(SE_REPORTED_OPTIONS, answers.seReportedIncome)} | Write-offs: ${labelOf(SE_WRITEOFF_OPTIONS, answers.seWriteOffs)} | Taxes paid: ${labelOf(SE_TAXES_OPTIONS, answers.seTaxesPaid)} | Strength: ${E.selfEmployedTaxReturnStrength(answers)}`
+        : '',
+      `Credit score bracket: ${labelOf(CREDIT_OPTIONS, answers.creditScore)}`,
+      `Co-borrower: ${labelOf(COBORROWER_OPTIONS, answers.coBorrower)}`,
+      `Monthly income: $${Number(answers.monthlyIncome||0).toLocaleString()}`,
+      `Monthly debts: $${Number(answers.monthlyDebts||0).toLocaleString()}`,
+      `Available cash: $${Number(answers.availableCash||0).toLocaleString()}`,
+      `Purchase price: $${Number(answers.purchasePrice||0).toLocaleString()}`,
+      `Property taxes: ${taxesUsed}`,
+      `Insurance: ${insUsed}`,
+      `HOA: ${hoaUsed}`,
+      answers.propertyPurpose==='investment'
+        ? `Estimated rent: $${Number(answers.estimatedRent||0).toLocaleString()}/mo`
+        : '',
+      dti, dscrLine,
+      '',
+      '--- Possible programs ---',
+      eligible.length > 0 ? eligibleLines : '  (none)',
+      '',
+      '--- Programs ruled out ---',
+      ruled.length > 0 ? ruledLines : '  (none)',
+      '',
+      '--- Suggested follow-ups ---',
+      followUps,
+    ].filter(x => x !== '').join('\n');
+  }
+
+  /* ---------- Main App ---------- */
+  function App() {
+    const [stage, setStage] = useState('landing');
+    const [answers, setAnswers] = useState(initialAnswers);
+    const [stepIndex, setStepIndex] = useState(0);
+    const [submitting, setSubmitting] = useState(false);
+    const [contact, setContact] = useState(null);
+
+    const activeQuestions = useMemo(() => getActiveQuestions(answers), [answers]);
+    const currentQuestion = activeQuestions[stepIndex];
+
+    const update = (id, value) => setAnswers((a) => ({ ...a, [id]: value }));
+
+    const goNext = () => {
+      if (!currentQuestion) return;
+      if (stepIndex + 1 >= activeQuestions.length) { setStage('results'); return; }
+      setStepIndex(stepIndex + 1);
+    };
+    const goBack = () => {
+      if (stepIndex === 0) { setStage('landing'); return; }
+      setStepIndex(stepIndex - 1);
+    };
+    const restart = () => {
+      setAnswers(initialAnswers);
+      setStepIndex(0);
+      setStage('landing');
+      setContact(null);
+    };
+
+    if (stage === 'landing') {
+      return (
+        <div className="min-h-screen">
+          <TopBar showRestart={false} />
+          <Landing onStart={() => { setStage('quiz'); setStepIndex(0); }} />
+        </div>
+      );
+    }
+    if (stage === 'thankyou') {
+      return (
+        <div className="min-h-screen">
+          <TopBar showRestart={false} />
+          <ThankYou onRestart={restart} />
+        </div>
+      );
+    }
+    if (stage === 'quiz') {
+      if (!currentQuestion) { setStage('results'); return null; }
+      return (
+        <div className="min-h-screen">
+          <TopBar showRestart onRestart={restart} />
+          <ProgressBar current={stepIndex} total={activeQuestions.length} />
+          <QuestionStep
+            title={currentQuestion.title} helper={currentQuestion.helper}
+            onBack={goBack} canBack
+            onNext={currentQuestion.type === 'choice' ? null : goNext}
+            canNext={answerReady(currentQuestion, answers)}
+            nextLabel={stepIndex + 1 >= activeQuestions.length ? 'See my results' : 'Continue'}
+          >
+            {currentQuestion.type === 'choice' && (
+              <MultipleChoiceQuestion value={answers[currentQuestion.id]} options={currentQuestion.options}
+                onSelect={(v) => {
+                  const nextAnswers = { ...answers, [currentQuestion.id]: v };
+                  setAnswers(nextAnswers);
+                  setTimeout(() => {
+                    const newActive = getActiveQuestions(nextAnswers);
+                    if (stepIndex + 1 >= newActive.length) setStage('results');
+                    else setStepIndex(stepIndex + 1);
+                  }, 150);
+                }}
+              />
+            )}
+            {currentQuestion.type === 'numeric' && (
+              <NumericInputQuestion value={answers[currentQuestion.id]}
+                onChange={(v) => update(currentQuestion.id, v)} placeholder="0"
+              />
+            )}
+            {currentQuestion.type === 'downPayment' && (
+              <DownPaymentQuestion
+                purchasePrice={answers.purchasePrice}
+                downPercent={answers.downPaymentPercent} downDollar={answers.downPaymentDollar}
+                onChangePercent={(v) => update('downPaymentPercent', v)}
+                onChangeDollar={(v) => update('downPaymentDollar', v)}
+              />
+            )}
+          </QuestionStep>
+
+          {currentQuestion.id === 'monthlyHOA' && answers.hasHOA === 'unknown' && (
+            <div className="max-w-2xl mx-auto px-4">
+              <div className="text-xs text-slate-500 -mt-4">Note: {C.disclaimers.hoaUnknown}</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* Results stage */
+    const evals = E.evaluateAll(answers);
+    const eligible = evals.filter(p => p.eligible);
+    const ruled = evals.filter(p => !p.eligible);
+    const summary = buildAdvisorSummary(answers, evals, contact);
+    const dscrInfo = answers.propertyPurpose === 'investment' ? { ratio: F.dscrRatio(answers) } : null;
+
+    const handleSubmitContact = async (form) => {
+      setSubmitting(true);
+      setContact(form);
+      const summary = buildAdvisorSummary(answers, evals, form);
+      // POST to Netlify Forms. The form-name must match the hidden static
+      // form in index.html so Netlify routes it correctly.
+      const body = new URLSearchParams({
+        'form-name': 'mortgage-lead',
+        name: form.name || '',
+        phone: form.phone || '',
+        email: form.email || '',
+        preferredContact: form.preferredContact || '',
+        bestTime: form.bestTime || '',
+        message: form.message || '',
+        leadSummary: summary,
+      }).toString();
+      try {
+        await fetch('/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+        });
+      } catch (err) {
+        // Don't block the borrower's UX on a submission error — log for the
+        // advisor and still show the thank-you page. The summary is also
+        // printed so it can be recovered manually if needed.
+        console.error('Lead submission failed:', err);
+        console.log(summary);
+      }
+      setSubmitting(false);
+      setStage('thankyou');
+    };
+
+    return (
+      <div className="min-h-screen">
+        <TopBar showRestart onRestart={restart} />
+        <div className="max-w-2xl mx-auto px-4 pt-6 pb-24">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 shadow-sm">
+            <h2 className="text-xl md:text-2xl font-bold text-slate-900">Your estimated mortgage options</h2>
+            <p className="mt-2 text-sm text-slate-600 leading-relaxed">{C.disclaimers.results}</p>
+            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              {C.disclaimers.noCreditPull}
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4">
+            {eligible.length === 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-900">
+                Based on your answers, we couldn’t auto-match a standard program. A mortgage advisor
+                can still review your situation manually — many borrowers fit programs that need a
+                human review beyond what this tool can match.
+              </div>
+            )}
+            {eligible.map(p => {
+              const calc = F.computeProgramPayment(p.key, answers);
+              return <ProgramResultCard key={p.key} program={p} calc={calc}
+                       dscrInfo={p.key === 'dscr' ? dscrInfo : null} />;
+            })}
+          </div>
+
+          {ruled.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-base font-semibold text-slate-900 mb-2">
+                Programs that may not fit based on your answers
+              </h3>
+              <div className="grid gap-2">
+                {ruled.map(p => <RuledOutCard key={p.key} program={p} />)}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6"><ContactForm onSubmit={handleSubmitContact} submitting={submitting} /></div>
+          <div className="mt-6"><AdvisorSummary summary={summary} /></div>
+        </div>
+      </div>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+})();
+</script>
+</body>
+</html>
