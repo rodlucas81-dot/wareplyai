@@ -1735,7 +1735,10 @@ async function onDiagnoseStop() {
     const res = await fetch('/api/diagnose', { method: 'POST', body: fd });
     result = await res.json();
     if (!res.ok || result.error) {
-      throw new Error(result?.error?.message || ('HTTP ' + res.status));
+      // Surface the full upstream error so we can diagnose without hunting through logs
+      const msg = result?.error?.message || ('HTTP ' + res.status);
+      const detail = result?.error?.detail ? '\n\nDetalhe do servidor:\n' + result.error.detail : '';
+      throw new Error(msg + detail);
     }
   } catch (e) {
     clearTimeout(stepTimeout);
