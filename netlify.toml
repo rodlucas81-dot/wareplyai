@@ -4,3 +4,16 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+
+# The mini application moved from /aplicacao to the site root. Keep the old
+# path working for any link already shared. Netlify carries query strings
+# through, so /aplicacao/?lang=en still lands in English.
+[[redirects]]
+  from = "/aplicacao"
+  to = "/"
+  status = 301
+
+[[redirects]]
+  from = "/aplicacao/*"
+  to = "/"
+  status = 301
