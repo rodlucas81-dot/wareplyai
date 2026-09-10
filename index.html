@@ -692,9 +692,14 @@ let pastedImage = null;
         console.warn('[pwa] service worker registration failed:', err);
       });
 
-    // Reload once, after the new worker actually takes control.
+    // Reload once when a new worker replaces an existing one. On the very
+    // first visit there is no previous controller — clients.claim() fires
+    // controllerchange then too, and reloading would throw away anything
+    // the user had already typed.
+    let hadController = !!navigator.serviceWorker.controller;
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) { hadController = true; return; }   // first install: now controlled, stay put
       if (reloading) return;
       reloading = true;
       location.reload();
