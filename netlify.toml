@@ -5,15 +5,39 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# The mini application moved from /aplicacao to the site root. Keep the old
-# path working for any link already shared. Netlify carries query strings
-# through, so /aplicacao/?lang=en still lands in English.
+# WA Reply AI is back at the site root. Keep the /wareplyai path working for
+# any link already shared while it lived there.
 [[redirects]]
-  from = "/aplicacao"
+  from = "/wareplyai"
   to = "/"
   status = 301
 
 [[redirects]]
-  from = "/aplicacao/*"
+  from = "/wareplyai/*"
   to = "/"
   status = 301
+
+# The service worker must never be served stale, or a bad worker outlives the
+# fix. Netlify's CDN still revalidates; no-cache means "check every time".
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Content-Type = "application/manifest+json"
+
+# The app is one self-contained HTML file, so the document is what changes on
+# every deploy. Revalidate it rather than letting a browser pin an old build.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
